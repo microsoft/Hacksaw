@@ -5,7 +5,7 @@
 set -x
 
 pushd $HOME
-wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/llvm-project-15.0.0.src.tar.xz -O - | tar -xz
+wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/llvm-project-15.0.0.src.tar.xz -O - | tar -xJ
 
 mkdir -p llvm-project
 
