@@ -4,10 +4,10 @@
 
 set -x
 
-pushd gen_database
+git clone --depth=1 -b release/15.x https://github.com/llvm/llvm-project.git ~/llvm-project
 
+pushd gen_database
 pushd platform
-git clone --depth=1 https://github.com/llvm/llvm-project.git -b release/15.x
 mkdir -p build
 pushd build
 cmake ..
