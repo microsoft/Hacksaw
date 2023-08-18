@@ -31,9 +31,9 @@ jobs:
       with:
         languages: ${{ matrix.language }}
 
-    - run: |
-        .pipelines/prepare.sh
-        .pipelines/build-llvm-plugins.sh
+          #    - run: |
+          #        .pipelines/prepare.sh
+          #        .pipelines/build-llvm-plugins.sh
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
