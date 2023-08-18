@@ -4,9 +4,9 @@ project (platformdb)
 add_executable (platformdb buildplatform.cpp)
 
 target_include_directories (platformdb PUBLIC
-    "$ENV{HOME}/llvm-project/include")
+    "$ENV{HOME}/llvm-project/build/include")
 target_link_directories (platformdb PUBLIC
-    "$ENV{HOME}/llvm-project/lib")
+    "$ENV{HOME}/llvm-project/build/lib")
 target_compile_options (platformdb PRIVATE
     "-D_GLIBCXX_USE_CXX11_ABI=1"
     )
@@ -19,9 +19,9 @@ target_link_libraries (platformdb LINK_PUBLIC
 add_executable (callgraph buildcallgraph.cpp)
 
 target_include_directories (callgraph PUBLIC
-    "$ENV{HOME}/llvm-project/include")
+    "$ENV{HOME}/llvm-project/build/include")
 target_link_directories (callgraph PUBLIC
-    "$ENV{HOME}/llvm-project/lib")
+    "$ENV{HOME}/llvm-project/build/lib")
 target_compile_options (callgraph PRIVATE
     "-D_GLIBCXX_USE_CXX11_ABI=1"
     )

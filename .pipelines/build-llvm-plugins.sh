@@ -7,7 +7,7 @@ set -x
 pushd $HOME
 wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/llvm-project-15.0.0.src.tar.xz -O - | tar -xJ
 
-mkdir -p llvm-project
+mv llvm-project-15.0.0.src llvm-project
 
 pushd llvm-project
 cmake -G "Unix Makefiles" \
@@ -17,11 +17,13 @@ cmake -G "Unix Makefiles" \
 	-DLLVM_ENABLE_DUMP=On \
 	-DLLVM_TARGETS_TO_BUILD=X86 \
 	-DLLVM_ENABLE_PROJECTS="clang" \
-	-S ../llvm-project-15.0.0.src/llvm \
-	-B .
+	-S llvm \
+	-B build
 
+pushd build
 make -j$(nproc) LLVMCore LLVMSupport LLVMIRReader
 
+popd # build
 popd # llvm-project
 popd # $HOME
 
