@@ -40,7 +40,7 @@ make install-LLVMTableGenGlobalISel
 make install-llvm-headers
 popd
 
-pushd gen_database
+pushd hwdb
 pushd platform
 mkdir -p build
 pushd build
