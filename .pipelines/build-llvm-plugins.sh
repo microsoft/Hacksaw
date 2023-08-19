@@ -6,10 +6,9 @@ set -x
 
 pushd $HOME
 wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/llvm-project-15.0.0.src.tar.xz -O - | tar -xJ
+popd
 
-mv llvm-project-15.0.0.src llvm-project
-
-pushd llvm-project
+mkdir -p $HOME/llvm-build
 cmake -G "Unix Makefiles" \
 	-DCMAKE_BUILD_TYPE="Release" \
 	-DLLVM_ENABLE_RTTI=On \
@@ -17,15 +16,24 @@ cmake -G "Unix Makefiles" \
 	-DLLVM_ENABLE_DUMP=On \
 	-DLLVM_TARGETS_TO_BUILD=X86 \
 	-DLLVM_ENABLE_PROJECTS="clang" \
-	-S llvm \
-	-B build
+	-DCMAKE_INSTALL_PREFIX="$HOME/llvm-install" \
+	-S $HOME/llvm-project-15.0.0.src/llvm \
+	-B $HOME/llvm-build
 
-pushd build
+pushd $HOME/llvm-build
 make -j$(nproc) LLVMCore LLVMSupport LLVMIRReader
+make install-LLVMCore
+make install-LLVMSupport
+make install-LLVMIRReader
 
-popd # build
-popd # llvm-project
-popd # $HOME
+make install-LLVMAsmParser
+make install-LLVMBinaryFormat
+make install-LLVMBitReader
+make install-LLVMBitstreamReader
+make install-LLVMDemangle
+make install-LLVMRemarks
+make install-llvm-headers
+popd
 
 pushd gen_database
 pushd platform
