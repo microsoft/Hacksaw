@@ -4,8 +4,10 @@
 
 set -x
 
+LLVMSRC="llvm-project-15.0.7.src"
+
 pushd $HOME
-wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/llvm-project-15.0.0.src.tar.xz -O - | tar -xJ
+wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/$LLVMSRC.tar.xz -O - | tar -xJ
 popd
 
 mkdir -p $HOME/llvm-build
@@ -17,21 +19,23 @@ cmake -G "Unix Makefiles" \
 	-DLLVM_TARGETS_TO_BUILD=X86 \
 	-DLLVM_ENABLE_PROJECTS="clang" \
 	-DCMAKE_INSTALL_PREFIX="$HOME/llvm-install" \
-	-S $HOME/llvm-project-15.0.0.src/llvm \
+	-S $HOME/$LLVMSRC/llvm \
 	-B $HOME/llvm-build
 
 pushd $HOME/llvm-build
 make -j$(nproc) LLVMCore LLVMSupport LLVMIRReader
-make install-LLVMCore
-make install-LLVMSupport
-make install-LLVMIRReader
 
 make install-LLVMAsmParser
 make install-LLVMBinaryFormat
 make install-LLVMBitReader
 make install-LLVMBitstreamReader
+make install-LLVMCore
 make install-LLVMDemangle
+make install-LLVMIRReader
 make install-LLVMRemarks
+make install-LLVMSupport
+make install-LLVMTableGen
+make install-LLVMTableGenGlobalISel
 make install-llvm-headers
 popd
 
