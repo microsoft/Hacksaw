@@ -4,10 +4,11 @@
 
 set -x
 
-LLVMSRC="llvm-project-15.0.7.src"
+LLVMVER="15.0.7"
+LLVMSRC="llvm-project-$LLVMVER.src"
 
 pushd $HOME
-wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/$LLVMSRC.tar.xz -O - | tar -xJ
+wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVMVER/$LLVMSRC.tar.xz -O - | tar -xJ
 popd
 
 mkdir -p $HOME/llvm-build
