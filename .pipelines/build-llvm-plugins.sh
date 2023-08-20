@@ -4,14 +4,20 @@
 
 set -x
 
-LLVMVER="15.0.7"
-LLVMSRC="llvm-project-$LLVMVER.src"
+BUILD_PREFIX="${HOME}/hacksaw-build"
 
-pushd $HOME
-wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVMVER/$LLVMSRC.tar.xz -O - | tar -xJ
-popd
+LLVM_VER="15.0.7"
 
-mkdir -p $HOME/llvm-build
+LLVM_SRC="${BUILD_PREFIX}/llvm-project-src"
+mkdir -p ${LLVM_SRC}
+wget -c https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VER}/llvm-project-${LLVM_VER}.src.tar.xz -O - | tar -xJ --strip-components=1 -C ${LLVM_SRC}
+
+
+LLVM_BUILD="${BUILD_PREFIX}/llvm-build"
+LLVM_INSTALL="${BUILD_PREFIX}/llvm-install"
+mkdir -p ${LLVM_BUILD}
+mkdir -p ${LLVM_INSTALL}
+
 cmake -G "Unix Makefiles" \
 	-DCMAKE_BUILD_TYPE="Release" \
 	-DLLVM_ENABLE_RTTI=On \
@@ -19,11 +25,11 @@ cmake -G "Unix Makefiles" \
 	-DLLVM_ENABLE_DUMP=On \
 	-DLLVM_TARGETS_TO_BUILD=X86 \
 	-DLLVM_ENABLE_PROJECTS="clang" \
-	-DCMAKE_INSTALL_PREFIX="$HOME/llvm-install" \
-	-S $HOME/$LLVMSRC/llvm \
-	-B $HOME/llvm-build
+	-DCMAKE_INSTALL_PREFIX="${LLVM_INSTALL}" \
+	-S ${LLVM_SRC}/llvm \
+	-B ${LLVM_BUILD}
 
-pushd $HOME/llvm-build
+pushd ${LLVM_BUILD}
 make -j$(nproc) LLVMCore LLVMSupport LLVMIRReader
 
 make install-LLVMAsmParser
@@ -40,11 +46,13 @@ make install-LLVMTableGenGlobalISel
 make install-llvm-headers
 popd
 
-pushd hwdb
-pushd platform
-mkdir -p build
-pushd build
-cmake ..
+HWDB_BUILD="${BUILD_PREFIX}/hwdb"
+mkdir -p ${HWDB_BUILD}
+cmake -DLLVM_INCLUDE_PATH="${LLVM_INSTALL}/include" \
+	-DLLVM_LIB_PATH="${LLVM_INSTALL}/lib" \
+	-S hwdb/platform \
+	-B ${HWDB_BUILD}
+
+pushd ${HWDB_BUILD}
 make -j$(nproc)
-popd
 popd
