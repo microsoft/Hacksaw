@@ -24,11 +24,11 @@ nworkers = 1
 
 def parse_arguments(cli_args: List[str] = None) -> Namespace:
     parser = ArgumentParser(description='Get build dependencies between object files')
-    parser.add_argument('--obj-kconf-expr-file', action='store', required=True,
+    parser.add_argument('-f', '--obj-kconf-expr-file', action='store', required=True,
                         help='object-kconfig-expression file path')
-    parser.add_argument('--dotconfig-file', action='store', required=True,
+    parser.add_argument('-c', '--dotconfig-file', action='store', required=True,
                         help='kernel dotconfig file path')
-    parser.add_argument('--num-workers', action='store',
+    parser.add_argument('-n', '--num-workers', action='store',
                         help='the number of worker threads')
     return parser.parse_args(args=cli_args)
 
