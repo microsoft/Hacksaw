@@ -76,7 +76,7 @@ def kmaxall_cmd(d):
     os.system("kmaxall -B {0} > {1}/{0}/kmax".format(d,output_path))
 
     os.chdir(cwd)
-    os.system("./kreader-hacksaw --kmax-formulas {1}/{0}/kmax --show-constraints --single-line --object-only --tweak > {1}/{0}/kmax.out".format(d,output_path))
+    os.system("kreader --kmax-formulas {1}/{0}/kmax --show-constraints > {1}/{0}/kmax.out".format(d,output_path))
 
 def main(args: Namespace = parse_arguments()) -> int:
     try:
@@ -91,7 +91,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         pool.close()
         pool.join()
 
-        os.system("find " + output_path + " -name 'kmax.out' -exec cat {} \; | sort | uniq")
+        os.system("find " + output_path + " -name 'kmax.out' -exec cat {} \; | ./kreader-normalize | sort | uniq")
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)
