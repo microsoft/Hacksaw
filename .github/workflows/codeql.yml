@@ -33,14 +33,14 @@ jobs:
           ~/hacksaw-build/llvm-install
         key: ${{ runner.os }}-llvm-${{ hashFiles('~/hacksaw-build/llvm-install/**') }}
 
+    - run: |
+        .pipelines/prepare.sh
+        .pipelines/build-llvm-plugins.sh
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
       with:
         languages: ${{ matrix.language }}
-
-    - run: |
-        .pipelines/prepare.sh
-        .pipelines/build-llvm-plugins.sh
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
