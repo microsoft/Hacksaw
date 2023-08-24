@@ -12,34 +12,34 @@ from typing import Dict, List
 
 def main() -> int:
     try:
-        unit_start = False
-        unit_str = ''
+        buf_list = []
+        buf = ''
+        is_first = True
         for l in sys.stdin:
             line = l.rstrip()
-            stripped = l.strip()
-            if line == stripped:
-                if unit_start == False:
-                    unit_str = stripped
-                    unit_start = True
+            if line[0] != ' ':
+                if is_first == True:
+                    buf = line
+                    is_first = False
                 else:
-                    sp = unit_str.split()
-                    unit = sp[0]
-                    z3 = ' '.join(sp[1:])
-                    if unit[-2:] == '.o' and z3 != 'True':
-                        unit = os.path.normpath(unit)
-                        z3 = regex.sub('\$\(ARCH\)=arm', 'CONFIG_ARM', z3)
-                        z3 = regex.sub('\$\(ARCH\)=arm64', 'CONFIG_ARM64', z3)
-                        z3 = regex.sub('BITS=32', 'CONFIG_32BIT', z3)
-                        z3 = regex.sub('BITS=64', 'CONFIG_64BIT', z3)
-                        z3 = regex.sub(' 0,', ' False,', z3)
-                        z3 = regex.sub(' 1,', ' True,', z3)
-
-                        print(unit, z3)
-                    unit_str = ''
-                    unit_start = False
+                    buf_list.append(buf)
+                    buf = line
             else:
-                unit_str = unit_str + ' ' + stripped
+                buf = buf + ' ' + line.strip()
 
+        for buf in buf_list:
+            sp = buf.split()
+            unit = sp[0]
+            z3 = ' '.join(sp[1:])
+            if unit[-2:] == '.o' and z3 != 'True':
+                unit = os.path.normpath(unit)
+                z3 = regex.sub('\$\(ARCH\)=arm', 'CONFIG_ARM', z3)
+                z3 = regex.sub('\$\(ARCH\)=arm64', 'CONFIG_ARM64', z3)
+                z3 = regex.sub('BITS=32', 'CONFIG_32BIT', z3)
+                z3 = regex.sub('BITS=64', 'CONFIG_64BIT', z3)
+                z3 = regex.sub(' 0,', ' False,', z3)
+                z3 = regex.sub(' 1,', ' True,', z3)
+                print(unit, z3)
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)

@@ -91,7 +91,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         pool.close()
         pool.join()
 
-        os.system("find " + output_path + " -name 'kmax.out' -exec cat {} \; | ./kreader-normalize | sort | uniq")
+        os.system("find " + output_path + " -name 'kmax.out' -exec cat {} \; | ./kreader-normalize.py | sort | uniq")
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)
