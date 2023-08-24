@@ -6,7 +6,7 @@
 import os
 import sys
 import re
-import multiprocess as mp
+import multiprocessing as mp
 import math
 from collections import defaultdict
 from z3 import *
