@@ -11,7 +11,7 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
@@ -26,14 +26,23 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
+    - name: Setup caches
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/hacksaw-build/llvm-install
+        key: ${{ runner.os }}-llvm-${{ hashFiles('~/hacksaw-build/llvm-install/**') }}
+
+    - name: Prepare packages
+      run: .pipelines/prepare.sh
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
       with:
         languages: ${{ matrix.language }}
 
-    - run: |
-        .pipelines/prepare.sh
-        .pipelines/build-llvm-plugins.sh
+    - name: Build LLVM plugins
+      run: .pipelines/build-llvm-plugins.sh
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
