@@ -17,3 +17,12 @@ cmake -DLLVM_INCLUDE_PATH="${LLVM_INSTALL}/include" \
 pushd ${HWDB_BUILD}
 make -j$(nproc)
 popd
+
+DRVMOD_BUILD="${BUILD_PREFIX}/drvmod"
+mkdir -p ${DRVMOD_BUILD}
+cmake -S driver_model/llvm-pass-busclass-assign \
+	-B ${DRVMOD_BUILD}
+
+pushd ${DRVMOD_BUILD}
+make -j$(nproc)
+popd
