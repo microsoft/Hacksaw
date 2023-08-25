@@ -42,8 +42,7 @@ def load_configs(args: Namespace) -> Dict:
     return True
 
 def extract_bc_cmd(ko):
-    print('extract-bc {0}'.format(ko))
-    # os.system('extract-bc {0}'.format(ko))
+    os.system('extract-bc {0} -o {0}.hacksaw.bc'.format(ko))
 
 def main(args: Namespace = parse_arguments()) -> int:
     try:
@@ -58,7 +57,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         pool.close()
         pool.join()
 
-        os.system('extract-bc {0}/vmlinux'.format(kernel_path))
+        os.system('extract-bc {0}/vmlinux -o {0}/vmlinux.hacksaw.bc'.format(kernel_path))
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)

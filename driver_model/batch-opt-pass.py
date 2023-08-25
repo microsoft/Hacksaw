@@ -61,7 +61,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         if not load_configs(args):
             return 1
 
-        p = subprocess.run(['find', kernel_path, '-name', '*.bc'], capture_output=True, text=True)
+        p = subprocess.run(['find', kernel_path, '-name', '*.hacksaw.bc'], capture_output=True, text=True)
         bcs = p.stdout.split()
 
         pool = mp.Pool(nworkers)
