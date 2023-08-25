@@ -20,7 +20,7 @@ popd
 
 DRVMOD_BUILD="${BUILD_PREFIX}/drvmod"
 mkdir -p ${DRVMOD_BUILD}
-cmake -S driver_model/llvm-pass-busclass \
+cmake -S driver_model/llvm-pass-busclassassign \
 	-B ${DRVMOD_BUILD}
 
 pushd ${DRVMOD_BUILD}
