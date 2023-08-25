@@ -1,4 +1,3 @@
 #!/bin/bash
 
-docker build --tag comp_unit:0.1 .
-docker run -it --rm -v $PWD:/mnt -u $(id -u):$(id -g) comp_unit:0.1 sh -c "cd /mnt && ./test-comp-unit.sh"
+docker run -it --rm -v $PWD:/mnt -u $(id -u):$(id -g) hacksaw:0.1 sh -c "cd /mnt && ./test-comp-unit.sh"
