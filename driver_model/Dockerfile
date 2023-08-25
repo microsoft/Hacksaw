@@ -13,5 +13,5 @@ RUN apt update && apt install -y --no-install-recommends \
   && apt -y install clang-15 \
   && pip install --upgrade pip \
   && pip install wllvm
-RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100 \
-  && update-alternatives --install /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-15 100
+RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100
+RUN update-alternatives --install /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-15 100
