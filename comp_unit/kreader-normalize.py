@@ -6,7 +6,7 @@
 import os
 import sys
 import regex
-import multiprocess as mp
+import multiprocessing as mp
 from argparse import ArgumentParser, Namespace
 from typing import Dict, List
 
