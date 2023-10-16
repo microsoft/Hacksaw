@@ -18,6 +18,7 @@ RUN apt update \
     cpio \
     clang-15 \
     wget \
+    kmod \
   && pip install --upgrade pip \
   && pip install \
     wllvm \

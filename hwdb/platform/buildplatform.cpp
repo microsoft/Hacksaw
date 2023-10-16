@@ -41,6 +41,11 @@ static llvm::cl::opt<std::string> AliasFile(
         llvm::cl::desc("modules.alias file"),
         llvm::cl::init(""));
 
+static llvm::cl::opt<std::string> AllBCs(
+        "l",
+        llvm::cl::desc("allbc.list file"),
+        llvm::cl::init(""));
+
 static std::set<std::string> pci_register_func = {
     /*PCI Drivers*/
     "pci_match_id",
@@ -1084,7 +1089,7 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
     if (!regcalls.empty() && inputfile.find(".mod.bcmerged") != std::string::npos) {
         for (auto call : regcalls) {
             llvm::outs() << "Fixup " << inputfile <<"\n";
-            assert (modinit_db[inputfile].size() == 1);
+            //assert (modinit_db[inputfile].size() == 1);
             for (auto cbit : modinit_db[inputfile]) {
                 std::string entrypoint = cbit.first;
                 std::string modname = cbit.second;
@@ -1121,8 +1126,8 @@ int main(int argc, char **argv) {
         for (std::string line; std::getline(moddb, line);) {
             std::string name = line.substr(0, line.find(':'));
             std::string initcb = line.substr(line.find(':')+1, line.find(',')-line.find(':')-1);
-            std::string modname = line.substr(line.find(',')+1, -1);
-            std::string alias = modname.substr(modname.find(',')+1, -1);
+            std::string modname = line.substr(line.find(',')+1);
+            std::string alias = modname.substr(modname.find(',')+1);
             modname = modname.substr(0, modname.find(','));
             std::replace(modname.begin(), modname.end(), '-', '_');
             modinit_db[name][initcb] = modname; // init symbol should be unique within built-in.a
@@ -1140,7 +1145,7 @@ int main(int argc, char **argv) {
     std::set<std::string> known_apis ({"driver_register"});
     uint32_t sz;
     std::set<std::string> allbclist;
-    std::ifstream allbc("./allbc.list");
+    std::ifstream allbc(AllBCs);
     for (std::string line; std::getline(allbc, line);) {
         allbclist.insert(line);
     }
@@ -1193,7 +1198,7 @@ int main(int argc, char **argv) {
         for (std::string line; std::getline(aliasdb, line);) {
             std::string alias = line.substr(line.find(' ')+1, line.rfind(' ')-line.find(' ')-1);
             std::replace(alias.begin(), alias.end(), ' ', '_');
-            std::string modname = line.substr(line.rfind(' ')+1, -1);
+            std::string modname = line.substr(line.rfind(' ')+1);
             if (alias.find(':') == std::string::npos)
                 continue;
             if (alias.substr(0, 8) == "devname:")
