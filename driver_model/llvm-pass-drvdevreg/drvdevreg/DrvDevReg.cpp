@@ -21,9 +21,9 @@ namespace {
   std::set<StringRef> devFuncs;
   std::set<StringRef> drvFuncs;
 
-  struct DrvdevregPass : public ModulePass {
+  struct DrvDevRegPass : public ModulePass {
     static char ID;
-    DrvdevregPass() : ModulePass(ID) {}
+    DrvDevRegPass() : ModulePass(ID) {}
     virtual bool runOnModule(Module &M) {
       Module *m = &M;
       for (Module::global_iterator i = m->global_begin(), e = m->global_end(); i != e; ++i) {
@@ -137,7 +137,7 @@ namespace {
                 if (s2 != drvFuncs.end()) {
                   Module *m = Inst.getModule();
                   if (m)
-                    errs() << "bus_type: " << m->getName() << " " << F->getName() << "\n";
+                    errs() << "bus: " << m->getName() << " " << F->getName() << "\n";
                 }
               }
             }
@@ -150,5 +150,5 @@ namespace {
   };
 }
 
-char DrvdevregPass::ID = 0;
-static RegisterPass<DrvdevregPass> X("drvdevreg", "Driver/Device Registration Pass", false, false);
+char DrvDevRegPass::ID = 0;
+static RegisterPass<DrvDevRegPass> X("drvdevreg", "Driver/Device Registration Pass", false, false);

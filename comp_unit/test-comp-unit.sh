@@ -1,7 +1,9 @@
 #!/bin/bash
+set -x
 set -e
 
-KERNEL_PATH="linux-5.19.17/"
+KERNEL_VER="5.19.17"
+KERNEL_PATH="linux-${KERNEL_VER}/"
 KERNEL_CONF="dotconfig"
 OUTPUT_PATH="out/"
 OBJ_KCONF_DB="${OUTPUT_PATH}/obj-kconf.db"
@@ -9,7 +11,15 @@ BUILD_DEP_DB="build-dep.db"
 
 if [ ! -d "${KERNEL_PATH}" ]
 then
-	wget -c https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.19.17.tar.xz -O - | tar -xJ
+  wget -c https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${KERNEL_VER}.tar.xz -O - | tar -xJ
+fi
+
+if [ ! -f "${KERNEL_CONF}" ]
+then
+  pushd ${KERNEL_PATH}
+  make allmodconfig
+  popd
+  cp ${KERNEL_PATH}/.config $KERNEL_CONF
 fi
 
 mkdir -p ${OUTPUT_PATH}

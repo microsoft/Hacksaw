@@ -68,7 +68,7 @@ namespace {
               }
               else if (std::find(busTypeStruct.begin(), busTypeStruct.end(), si->getValueOperand()) !=
                   busTypeStruct.end()) {
-                errs() << "bus_type: " << si->getValueOperand()->getName() << " " <<
+                errs() << "bus: " << si->getValueOperand()->getName() << " " <<
                   M.getName() << " " << F.getName() << "\n";
               }
             }
@@ -100,7 +100,7 @@ namespace {
                 if (isClass)
                   errs() << "class: ??? ";
                 else
-                  errs() << "bus_type: ??? ";
+                  errs() << "bus: ??? ";
                 errs() << M.getName() << " " << F.getName() << "\n";
               }
             }
