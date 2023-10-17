@@ -52,12 +52,23 @@ def main(args: Namespace = parse_arguments()) -> int:
         p = subprocess.run(['find', kernel_path, '-name', '*.ko'], capture_output=True, text=True)
         kos = p.stdout.split()
 
+        p = subprocess.run(['find', kernel_path, '-name', '*.o'], capture_output=True, text=True)
+        allobjs = p.stdout.split()
+
+        objset = set([])
+        for o in allobjs:
+            if o[-6:] != '.mod.o':
+                objset.add(o)
+        for ko in kos:
+            o = ko[:-2] + 'o'
+            if o in objset:
+                objset.remove(o)
+        objs = list(objset)
+
         pool = mp.Pool(nworkers)
-        pool.map(extract_bc_cmd, kos)
+        pool.map(extract_bc_cmd, kos + objs)
         pool.close()
         pool.join()
-
-        os.system('extract-bc {0}/vmlinux -o {0}/vmlinux.hacksaw.bc'.format(kernel_path))
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)

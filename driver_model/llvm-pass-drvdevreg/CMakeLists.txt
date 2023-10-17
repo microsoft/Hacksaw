@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.13.4)
-project(busclassassign)
+cmake_minimum_required(VERSION 3.1)
+project(Drvdevreg)
 
 set(CMAKE_CXX_STANDARD 14)
 
@@ -8,4 +8,4 @@ add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
 
-add_subdirectory(busclassassign)
+add_subdirectory(drvdevreg)

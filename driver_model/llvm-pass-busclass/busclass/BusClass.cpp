@@ -20,9 +20,9 @@ namespace {
   std::vector<Value*> classStruct;
   std::vector<Value*> busTypeStruct;
 
-  struct BusClassAssignPass : public ModulePass {
+  struct BusClassPass : public ModulePass {
     static char ID;
-    BusClassAssignPass() : ModulePass(ID) {}
+    BusClassPass() : ModulePass(ID) {}
     virtual bool runOnModule(Module &M) {
       Module *m = &M;
       for (Module::global_iterator i = m->global_begin(), e = m->global_end(); i != e; ++i) {
@@ -63,13 +63,13 @@ namespace {
             if (auto *si = dyn_cast<StoreInst>(&Inst)) {
               if (std::find(classStruct.begin(), classStruct.end(), si->getValueOperand()) !=
                   classStruct.end()) {
-                errs() << "class: " << si->getValueOperand()->getName() <<
-                  " " << F.getName() << " " << M.getName() << "\n";
+                errs() << "class: " << si->getValueOperand()->getName() << " " <<
+                  M.getName() << " " << F.getName() << "\n";
               }
               else if (std::find(busTypeStruct.begin(), busTypeStruct.end(), si->getValueOperand()) !=
                   busTypeStruct.end()) {
-                errs() << "bus_type: " << si->getValueOperand()->getName() <<
-                  " " << F.getName() << " " << M.getName() << "\n";
+                errs() << "bus_type: " << si->getValueOperand()->getName() << " " <<
+                  M.getName() << " " << F.getName() << "\n";
               }
             }
             else if (auto *gep = dyn_cast<GEPOperator>(&Inst)) {
@@ -98,9 +98,10 @@ namespace {
 
               if (isStore) {
                 if (isClass)
-                  errs() << "class: ??? " << F.getName() << " " << M.getName() << "\n";
+                  errs() << "class: ??? ";
                 else
-                  errs() << "bus_type: ??? " << F.getName() << " " << M.getName() << "\n";
+                  errs() << "bus_type: ??? ";
+                errs() << M.getName() << " " << F.getName() << "\n";
               }
             }
           }
@@ -111,5 +112,5 @@ namespace {
   };
 }
 
-char BusClassAssignPass::ID = 0;
-static RegisterPass<BusClassAssignPass> X("busclassassign", "Bus/Class Assignment Detector Pass", false, false);
+char BusClassPass::ID = 0;
+static RegisterPass<BusClassPass> X("busclass", "Bus/Class Detector Pass", false, false);

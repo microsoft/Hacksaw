@@ -14,6 +14,7 @@ from typing import Dict, List
 kernel_path = ''
 pass_object = ''
 pass_name = ''
+file_list = ''
 nworkers = 1
 
 def parse_arguments(cli_args: List[str] = None) -> Namespace:
@@ -24,6 +25,8 @@ def parse_arguments(cli_args: List[str] = None) -> Namespace:
                         help='pass object file')
     parser.add_argument('-p', '--pass-name', action='store', required=True,
                         help='pass name')
+    parser.add_argument('-l', '--file-list', action='store',
+                        help='bc file list')
     parser.add_argument('-n', '--num-workers', action='store',
                         help='the number of worker threads')
     return parser.parse_args(args=cli_args)
@@ -41,6 +44,10 @@ def load_configs(args: Namespace) -> Dict:
 
         global pass_name
         pass_name = args.pass_name
+
+        global file_list
+        if args.file_list != None:
+            file_list = args.file_list
 
         global nworkers
         if args.num_workers != None:
@@ -61,8 +68,15 @@ def main(args: Namespace = parse_arguments()) -> int:
         if not load_configs(args):
             return 1
 
-        p = subprocess.run(['find', kernel_path, '-name', '*.hacksaw.bc'], capture_output=True, text=True)
-        bcs = p.stdout.split()
+        bcs = []
+
+        if file_list == '':
+            p = subprocess.run(['find', kernel_path, '-name', '*.hacksaw.bc'], capture_output=True, text=True)
+            bcs = p.stdout.split()
+        else:
+            with open(file_list) as file:
+                for line in file:
+                    bcs.append(line.rstrip())
 
         pool = mp.Pool(nworkers)
         pool.map(extract_bc_cmd, bcs)
