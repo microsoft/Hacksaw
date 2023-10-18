@@ -12,12 +12,15 @@ from typing import Dict, List
 
 
 kernel_path = ''
+builtin_list = ''
 nworkers = 1
 
 def parse_arguments(cli_args: List[str] = None) -> Namespace:
     parser = ArgumentParser(description='Get minimal kernel configuration expressions for each object file')
     parser.add_argument('-k', '--kernel-path', action='store', required=True,
                         help='kernel source path')
+    parser.add_argument('-l', '--builtin-list', action='store', required=True,
+                        help='builtin object list')
     parser.add_argument('-n', '--num-workers', action='store',
                         help='the number of worker threads')
     return parser.parse_args(args=cli_args)
@@ -28,6 +31,12 @@ def load_configs(args: Namespace) -> Dict:
         kernel_path=os.path.realpath(args.kernel_path)
         if not os.path.exists(kernel_path):
             print(kernel_path, "does not exist", file=sys.stderr)
+            return False
+
+        global builtin_list
+        builtin_list = os.path.realpath(args.builtin_list)
+        if not os.path.exists(builtin_list):
+            print(builtin_list, "does not exist", file=sys.stderr)
             return False
 
         global nworkers
@@ -52,18 +61,22 @@ def main(args: Namespace = parse_arguments()) -> int:
         p = subprocess.run(['find', kernel_path, '-name', '*.ko'], capture_output=True, text=True)
         kos = p.stdout.split()
 
-        p = subprocess.run(['find', kernel_path, '-name', '*.o'], capture_output=True, text=True)
-        allobjs = p.stdout.split()
+#        p = subprocess.run(['find', kernel_path, '-name', '*.o'], capture_output=True, text=True)
+#        allobjs = p.stdout.split()
 
-        objset = set([])
-        for o in allobjs:
-            if o[-6:] != '.mod.o':
-                objset.add(o)
-        for ko in kos:
-            o = ko[:-2] + 'o'
-            if o in objset:
-                objset.remove(o)
-        objs = list(objset)
+#        objset = set([])
+#        for o in allobjs:
+#            if o[-6:] != '.mod.o':
+#                objset.add(o)
+#        for ko in kos:
+#            o = ko[:-2] + 'o'
+#            if o in objset:
+#                objset.remove(o)
+#        objs = list(objset)
+        objs = []
+        with open(builtin_list) as file:
+            for line in file:
+                objs.append(line.rstrip())
 
         pool = mp.Pool(nworkers)
         pool.map(extract_bc_cmd, kos + objs)

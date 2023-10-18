@@ -43,8 +43,8 @@ cmake $DRVDEV_SRC
 make
 popd
 
-./extract-kernel-bc.py -k $KERNEL_PATH -n $(nproc)
-rm $KERNEL_PATH/vmlinux.o.hacksaw.bc
+./get-builtin-objs.py -k $KERNEL_PATH > $OUTPUT_PATH/builtin-objs.db
+./extract-kernel-bc.py -k $KERNEL_PATH -l $OUTPUT_PATH/builtin-objs.db -n $(nproc)
 
 ./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$BUSCLASS/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc)
 find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/busclass.out
@@ -52,20 +52,16 @@ find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec rm -f {} \;
 
 cat $OUTPUT_PATH/busclass.out | grep '^bus: ' | sort | uniq > $OUTPUT_PATH/busdrv.db
 cat $OUTPUT_PATH/busclass.out | grep '^class: ' | sort | uniq > $OUTPUT_PATH/classdrv.db
-cat $OUTPUT_PATH/busdrv.db | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/busdrv.list
-cat $OUTPUT_PATH/classdrv.db | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/classdrv.list
+cat $OUTPUT_PATH/busdrv.db | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/busdrv.names
+cat $OUTPUT_PATH/classdrv.db | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/classdrv.names
 
-./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -l $OUTPUT_PATH/busdrv.list -n $(nproc)
+./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -l $OUTPUT_PATH/busdrv.names -n $(nproc)
 find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/bus-regfuns.out
 find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec rm -f {} \;
 
-./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -l $OUTPUT_PATH/classdrv.list -n $(nproc)
+./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -l $OUTPUT_PATH/classdrv.names -n $(nproc)
 find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/class-regfuns.out
 find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec rm -f {} \;
 
-cat $OUTPUT_PATH/bus-regfuns.out | grep '^bus: ' | awk '{ print $2,$3 }' |
-  sort | uniq > $OUTPUT_PATH/bus-regfuns.txt
-cat $OUTPUT_PATH/class-regfuns.out | grep '^class: ' | awk '{ print $2,$3 }' |
-  sort | uniq > $OUTPUT_PATH/class-regfuns.txt
-
-./get-builtin-objs.py -k $KERNEL_PATH > $OUTPUT_PATH/builtin-objs.txt
+cat $OUTPUT_PATH/bus-regfuns.out | grep '^bus: ' | awk '{ print $2,$3 }' | sort | uniq > $OUTPUT_PATH/bus-regfuns.db
+cat $OUTPUT_PATH/class-regfuns.out | grep '^class: ' | awk '{ print $2,$3 }' | sort | uniq > $OUTPUT_PATH/class-regfuns.db
