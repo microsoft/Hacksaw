@@ -32,3 +32,7 @@ RUN update-alternatives \
   --slave /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-15 \
   --slave /usr/bin/llvm-ar llvm-ar /usr/bin/llvm-ar-15 \
   --slave /usr/bin/opt opt /usr/bin/opt-15
+
+RUN mkdir -p /hacksaw
+RUN chmod 777 /hacksaw
+WORKDIR /hacksaw
