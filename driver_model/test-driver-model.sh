@@ -67,3 +67,5 @@ cat $OUTPUT_PATH/bus-regfuns.out | grep '^bus: ' | awk '{ print $2,$3 }' |
   sort | uniq > $OUTPUT_PATH/bus-regfuns.txt
 cat $OUTPUT_PATH/class-regfuns.out | grep '^class: ' | awk '{ print $2,$3 }' |
   sort | uniq > $OUTPUT_PATH/class-regfuns.txt
+
+./get-builtin-objs.py -k $KERNEL_PATH > $OUTPUT_PATH/builtin-objs.txt
