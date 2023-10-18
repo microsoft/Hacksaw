@@ -24,11 +24,11 @@ fi
  
 cp $KERNEL_CONF $KERNEL_PATH/.config
  
-# pushd $KERNEL_PATH
-# export LLVM_COMPILER=clang
-# make CC=wllvm olddefconfig
-# make CC=wllvm -j$(nproc)
-# popd
+pushd $KERNEL_PATH
+export LLVM_COMPILER=clang
+make CC=wllvm olddefconfig
+make CC=wllvm -j$(nproc)
+popd
 
 mkdir -p $BUILD_PATH/$BUSCLASS
 mkdir -p $BUILD_PATH/$DRVDEV
@@ -43,8 +43,8 @@ cmake $DRVDEV_SRC
 make
 popd
 
-# ./extract-kernel-bc.py -k $KERNEL_PATH -n $(nproc)
-# rm $KERNEL_PATH/vmlinux.o.hacksaw.bc
+./extract-kernel-bc.py -k $KERNEL_PATH -n $(nproc)
+rm $KERNEL_PATH/vmlinux.o.hacksaw.bc
 
 ./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$BUSCLASS/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc)
 find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/busclass.out
