@@ -61,7 +61,7 @@ def load_configs(args: Namespace) -> Dict:
     return True
 
 def extract_bc_cmd(bc):
-    os.system("opt -load {0} -enable-new-pm=0 --{1} -o /dev/null {2}".format(pass_object, pass_name, bc))
+    os.system("opt -load {0} -enable-new-pm=0 --{1} -o /dev/null {2} 2>{2}.out".format(pass_object, pass_name, bc))
 
 def main(args: Namespace = parse_arguments()) -> int:
     try:
