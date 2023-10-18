@@ -19,7 +19,7 @@ def parse_arguments(cli_args: List[str] = None) -> Namespace:
     parser = ArgumentParser(description='Get minimal kernel configuration expressions for each object file')
     parser.add_argument('-k', '--kernel-path', action='store', required=True,
                         help='kernel source path')
-    parser.add_argument('-l', '--builtin-list', action='store', required=True,
+    parser.add_argument('-b', '--builtin-list', action='store', required=True,
                         help='builtin object list')
     parser.add_argument('-n', '--num-workers', action='store',
                         help='the number of worker threads')
@@ -61,18 +61,6 @@ def main(args: Namespace = parse_arguments()) -> int:
         p = subprocess.run(['find', kernel_path, '-name', '*.ko'], capture_output=True, text=True)
         kos = p.stdout.split()
 
-#        p = subprocess.run(['find', kernel_path, '-name', '*.o'], capture_output=True, text=True)
-#        allobjs = p.stdout.split()
-
-#        objset = set([])
-#        for o in allobjs:
-#            if o[-6:] != '.mod.o':
-#                objset.add(o)
-#        for ko in kos:
-#            o = ko[:-2] + 'o'
-#            if o in objset:
-#                objset.remove(o)
-#        objs = list(objset)
         objs = []
         with open(builtin_list) as file:
             for line in file:

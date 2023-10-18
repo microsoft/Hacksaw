@@ -9,7 +9,7 @@ KERNEL_PATH="$BUILD_PATH/linux-${KERNEL_VER}/"
 KERNEL_CONF="dotconfig"
 BUILTIN_OBJS="builtin-objs.db"
 OBJ_KCONF_DB="${OUTPUT_PATH}/obj-kconf.db"
-BUILD_DEP_OUT="${OUTPUT_PATH}/build-dep.out"
+BUILD_DEP_OUT="${OUTPUT_PATH}/build-dep.raw"
 BUILTIN_DEP="${OUTPUT_PATH}/builtin-objs.dep"
 
 mkdir -p ${BUILD_PATH}

@@ -43,25 +43,23 @@ cmake $DRVDEV_SRC
 make
 popd
 
-./get-builtin-objs.py -k $KERNEL_PATH > $OUTPUT_PATH/builtin-objs.db
-./extract-kernel-bc.py -k $KERNEL_PATH -l $OUTPUT_PATH/builtin-objs.db -n $(nproc)
+./get-builtin-objs.py -k $KERNEL_PATH > $OUTPUT_PATH/builtin-objs.raw
+./extract-kernel-bc.py -k $KERNEL_PATH -b $OUTPUT_PATH/builtin-objs.raw -n $(nproc)
 
-./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$BUSCLASS/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc)
-find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/busclass.out
-find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec rm -f {} \;
+./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$BUSCLASS/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc) | tee $OUTPUT_PATH/busclass.raw
 
-cat $OUTPUT_PATH/busclass.out | grep '^bus: ' | sort | uniq > $OUTPUT_PATH/busdrv.db
-cat $OUTPUT_PATH/busclass.out | grep '^class: ' | sort | uniq > $OUTPUT_PATH/classdrv.db
-cat $OUTPUT_PATH/busdrv.db | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/busdrv.names
-cat $OUTPUT_PATH/classdrv.db | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/classdrv.names
+cat $OUTPUT_PATH/busclass.raw | grep '^bus: ' | sort | uniq > $OUTPUT_PATH/busdrv.raw
+cat $OUTPUT_PATH/busclass.raw | grep '^class: ' | sort | uniq > $OUTPUT_PATH/classdrv.raw
+cat $OUTPUT_PATH/busdrv.raw | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/busdrv.names
+cat $OUTPUT_PATH/classdrv.raw | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/classdrv.names
 
-./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -l $OUTPUT_PATH/busdrv.names -n $(nproc)
-find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/bus-regfuns.out
-find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec rm -f {} \;
+./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/busdrv.names -n $(nproc) | tee $OUTPUT_PATH/bus-regfuns.raw
+./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/classdrv.names -n $(nproc) | tee $OUTPUT_PATH/class-regfuns.raw
 
-./batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -l $OUTPUT_PATH/classdrv.names -n $(nproc)
-find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec cat {} \; | tee $OUTPUT_PATH/class-regfuns.out
-find $KERNEL_PATH -name "*.hacksaw.bc.out" -exec rm -f {} \;
+LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+\/"
+HACKSAW_SUFFIX="\.hacksaw\.bc "
 
-cat $OUTPUT_PATH/bus-regfuns.out | grep '^bus: ' | awk '{ print $2,$3 }' | sort | uniq > $OUTPUT_PATH/bus-regfuns.db
-cat $OUTPUT_PATH/class-regfuns.out | grep '^class: ' | awk '{ print $2,$3 }' | sort | uniq > $OUTPUT_PATH/class-regfuns.db
+cat $OUTPUT_PATH/bus-regfuns.raw | grep '^bus: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sed "s/$HACKSAW_SUFFIX/ /" | sort | uniq > $OUTPUT_PATH/bus-regfuns.db
+cat $OUTPUT_PATH/class-regfuns.raw | grep '^class: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sed "s/$HACKSAW_SUFFIX/ /" | sort | uniq > $OUTPUT_PATH/class-regfuns.db
+
+cat $OUTPUT_PATH/builtin-objs.raw | sed "s/$LINUX_PREFIX//" | sort | uniq > $OUTPUT_PATH/builtin-objs.db
