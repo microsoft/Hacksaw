@@ -20,6 +20,7 @@ objs_sat = []
 
 obj_kconf_expr_file = ""
 dotconfigs = set([])
+builtin_objs = set([])
 nworkers = 1
 
 def parse_arguments(cli_args: List[str] = None) -> Namespace:
@@ -28,6 +29,8 @@ def parse_arguments(cli_args: List[str] = None) -> Namespace:
                         help='object-kconfig-expression file path')
     parser.add_argument('-c', '--dotconfig-file', action='store', required=True,
                         help='kernel dotconfig file path')
+    parser.add_argument('-b', '--builtin-obj-file', action='store',
+                        help='built-in-only object list file path')
     parser.add_argument('-n', '--num-workers', action='store',
                         help='the number of worker threads')
     return parser.parse_args(args=cli_args)
@@ -48,6 +51,15 @@ def load_configs(args: Namespace) -> Dict:
         global nworkers
         if args.num_workers != None:
             nworkers = int(args.num_workers)
+
+        global builtin_objs
+        if args.builtin_obj_file != None:
+            if not os.path.exists(args.builtin_obj_file):
+                print(args.builtin_obj_file, "does not exist", file=sys.stderr)
+                return False
+            with open(args.builtin_obj_file) as file:
+                for line in file:
+                    builtin_objs.add(line.rstrip())
 
         global dotconfigs
         with open(args.dotconfig_file) as file:
@@ -153,6 +165,8 @@ def main(args: Namespace = parse_arguments()) -> int:
                 obj = sp[0].replace('$(BITS)', '64') # FIXME
                 if obj.find('$') != -1:
                     continue
+                if len(builtin_objs) != 0 and obj not in builtin_objs:
+                    continue
                 conf = " ".join(sp[1:])
                 obj_z3[obj] = re.sub("(CONFIG_[A-Za-z0-9_]+)", r"Bool('\1')", conf)
                 obj_kcvars[obj] = set(re.findall(r"(CONFIG_[A-Za-z0-9_]+)", conf))
@@ -168,7 +182,8 @@ def main(args: Namespace = parse_arguments()) -> int:
 
         global objs_sat
         set_sat = set(results)
-        set_sat.remove(-1)
+        if -1 in set_sat:
+            set_sat.remove(-1)
         for idx in set_sat:
             objs_sat.append(objs[idx])
         objs_sat = sorted(objs_sat)
