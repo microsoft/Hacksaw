@@ -1,14 +1,18 @@
 #!/bin/bash
-set -e
+
+if [ $# -eq 1 ]; then
+  KERNEL_VER="$1"
+else
+  KERNEL_VER="5.19.17"
+fi
 
 CURDIR=$(dirname $(realpath $0))
 ROOTDIR=$(dirname ${CURDIR})
-OUTPUT_PATH="${ROOTDIR}/out/"
+OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 BUILD_PATH="${ROOTDIR}/build/"
 
-KERNEL_VER="5.19.17"
 KERNEL_PATH="$BUILD_PATH/linux-$KERNEL_VER/"
-KERNEL_CONF="${CURDIR}/wllvm.config"
+KERNEL_CONF_FRAGMENT="${CURDIR}/wllvm.config.fragment"
 
 BUSCLASS="busclass"
 DRVDEV="drvdevreg"
@@ -20,15 +24,15 @@ mkdir -p $BUILD_PATH
 
 if [ ! -d "$KERNEL_PATH" ]; then
   pushd $BUILD_PATH
-  wget -c https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ
+  wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ
   popd
 fi
  
-cp $KERNEL_CONF $KERNEL_PATH/.config
- 
 pushd $KERNEL_PATH
 export LLVM_COMPILER=clang
-make CC=wllvm olddefconfig
+make CC=wllvm mrproper 
+make CC=wllvm allmodconfig
+./scripts/kconfig/merge_config.sh .config $KERNEL_CONF_FRAGMENT
 make CC=wllvm -j$(nproc)
 popd
 

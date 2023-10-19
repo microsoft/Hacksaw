@@ -1,12 +1,16 @@
 #!/bin/bash
-set -e
+
+if [ $# -eq 1 ]; then
+  KERNEL_VER="$1"
+else
+  KERNEL_VER="5.19.17"
+fi
 
 CURDIR=$(dirname $(realpath $0))
 ROOTDIR=$(dirname ${CURDIR})
 BUILD_PATH="${ROOTDIR}/build/"
-OUTPUT_PATH="${ROOTDIR}/out/"
+OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 
-KERNEL_VER="5.19.17"
 KERNEL_PATH="$BUILD_PATH/linux-${KERNEL_VER}/"
 KERNEL_CONF="${OUTPUT_PATH}/dotconfig"
 BUILTIN_OBJS="${OUTPUT_PATH}/builtin-objs.db"
@@ -19,7 +23,7 @@ mkdir -p ${OUTPUT_PATH}
 
 if [ ! -d "${KERNEL_PATH}" ]; then
   pushd $BUILD_PATH
-  wget -c https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${KERNEL_VER}.tar.xz -O - | tar -xJ
+  wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ
   popd
 fi
 
