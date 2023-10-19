@@ -9,6 +9,8 @@ import multiprocessing as mp
 from argparse import ArgumentParser, Namespace
 from typing import Dict, List
 
+CWD = os.path.dirname(os.path.abspath(__file__))
+
 dirs=[
     "arch/x86",
     "block",
@@ -91,7 +93,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         pool.close()
         pool.join()
 
-        os.system("find " + output_path + " -name 'kmax.out' -exec cat {} \; | ./kreader-normalize.py | sort | uniq")
+        os.system("find " + output_path + f" -name 'kmax.out' -exec cat {{}} \; | {CWD}/kreader-normalize.py | sort | uniq")
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)

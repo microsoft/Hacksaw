@@ -6,6 +6,7 @@ curdir=$(dirname $(realpath $0))
 
 pushd ${KERN_SRC}
 
+make mrproper
 mkdir -p build_llvm
 #make -j4 CC=clang allyesconfig O=./build_llvm
 make -j$(nproc) CC=clang allmodconfig O=./build_llvm
