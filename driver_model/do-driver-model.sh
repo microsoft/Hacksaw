@@ -12,7 +12,8 @@ OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 BUILD_PATH="${ROOTDIR}/build/"
 
 KERNEL_PATH="$BUILD_PATH/linux-$KERNEL_VER/"
-KERNEL_CONF_FRAGMENT="${CURDIR}/wllvm.config.fragment"
+KERNEL_CONF="${OUTPUT_PATH}/dotconfig"
+KERNEL_CONF_FRAGMENT="${CURDIR}/wllvm.kconfig.fragment"
 
 BUSCLASS="busclass"
 DRVDEV="drvdevreg"
@@ -33,8 +34,11 @@ export LLVM_COMPILER=clang
 make CC=wllvm mrproper 
 make CC=wllvm allmodconfig
 ./scripts/kconfig/merge_config.sh .config $KERNEL_CONF_FRAGMENT
+make CC=wllvm olddefconfig
 make CC=wllvm -j$(nproc)
 popd
+
+cp ${KERNEL_PATH}/.config $KERNEL_CONF
 
 mkdir -p $DRVMOD_PATH
 pushd $DRVMOD_PATH
