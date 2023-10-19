@@ -18,20 +18,11 @@ pushd ${HWDB_BUILD}
 make -j$(nproc)
 popd
 
-BUSCLASS_BUILD="${BUILD_PREFIX}/busclass"
-mkdir -p ${BUSCLASS_BUILD}
-cmake -S driver_model/llvm-pass-busclass \
-	-B ${BUSCLASS_BUILD}
+DRVMOD_BUILD="${BUILD_PREFIX}/drvmod"
+mkdir -p ${DRVMOD_BUILD}
+cmake -S driver_model/llvm-pass \
+	-B ${DRVMOD_BUILD}
 
-pushd ${BUSCLASS_BUILD}
-make -j$(nproc)
-popd
-
-DRVDEV_BUILD="${BUILD_PREFIX}/drvdevreg"
-mkdir -p ${DRVDEV_BUILD}
-cmake -S driver_model/llvm-pass-drvdevreg \
-	-B ${DRVDEV_BUILD}
-
-pushd ${DRVDEV_BUILD}
+pushd ${DRVMOD_BUILD}
 make -j$(nproc)
 popd
