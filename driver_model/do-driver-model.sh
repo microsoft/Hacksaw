@@ -12,8 +12,8 @@ KERNEL_CONF="${CURDIR}/wllvm.config"
 
 BUSCLASS="busclass"
 DRVDEV="drvdevreg"
-BUSCLASS_SRC=$(realpath "${CURDIR}/llvm-pass-$BUSCLASS/")
-DRVDEV_SRC=$(realpath "${CURDIR}/llvm-pass-$DRVDEV/")
+DRVMOD_SRC=$(realpath "${CURDIR}/llvm-pass")
+DRVMOD_PATH="$BUILD_PATH/drvmod"
 
 mkdir -p $OUTPUT_PATH
 mkdir -p $BUILD_PATH
@@ -32,31 +32,24 @@ make CC=wllvm olddefconfig
 make CC=wllvm -j$(nproc)
 popd
 
-mkdir -p $BUILD_PATH/$BUSCLASS
-mkdir -p $BUILD_PATH/$DRVDEV
-
-pushd $BUILD_PATH/$BUSCLASS
-cmake $BUSCLASS_SRC
-make
-popd
-
-pushd $BUILD_PATH/$DRVDEV
-cmake $DRVDEV_SRC
-make
+mkdir -p $DRVMOD_PATH
+pushd $DRVMOD_PATH
+cmake $DRVMOD_SRC
+make -j$(nproc)
 popd
 
 ${CURDIR}/get-builtin-objs.py -k $KERNEL_PATH > $OUTPUT_PATH/builtin-objs.raw
 ${CURDIR}/extract-kernel-bc.py -k $KERNEL_PATH -b $OUTPUT_PATH/builtin-objs.raw -n $(nproc)
 
-${CURDIR}/batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$BUSCLASS/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc) | tee $OUTPUT_PATH/busclass.raw
+${CURDIR}/batch-opt-pass.py -k $KERNEL_PATH -o $DRVMOD_PATH/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc) | tee $OUTPUT_PATH/busclass.raw
 
 cat $OUTPUT_PATH/busclass.raw | grep '^bus: ' | sort | uniq > $OUTPUT_PATH/busdrv.raw
 cat $OUTPUT_PATH/busclass.raw | grep '^class: ' | sort | uniq > $OUTPUT_PATH/classdrv.raw
 cat $OUTPUT_PATH/busdrv.raw | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/busdrv.names
 cat $OUTPUT_PATH/classdrv.raw | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/classdrv.names
 
-${CURDIR}/batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/busdrv.names -n $(nproc) | tee $OUTPUT_PATH/bus-regfuns.raw
-${CURDIR}/batch-opt-pass.py -k $KERNEL_PATH -o $BUILD_PATH/$DRVDEV/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/classdrv.names -n $(nproc) | tee $OUTPUT_PATH/class-regfuns.raw
+${CURDIR}/batch-opt-pass.py -k $KERNEL_PATH -o $DRVMOD_PATH/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/busdrv.names -n $(nproc) | tee $OUTPUT_PATH/bus-regfuns.raw
+${CURDIR}/batch-opt-pass.py -k $KERNEL_PATH -o $DRVMOD_PATH/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/classdrv.names -n $(nproc) | tee $OUTPUT_PATH/class-regfuns.raw
 
 LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+\/"
 HACKSAW_SUFFIX="\.hacksaw\.bc "
