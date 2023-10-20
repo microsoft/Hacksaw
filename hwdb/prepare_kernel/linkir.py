@@ -20,8 +20,12 @@ for root,_,files in os.walk(linux_build):
             with open(os.path.join(root, f), 'r') as fd:
                 data = fd.read()
                 cmd = data.split(';')[1].strip()
-                assert(cmd.startswith("echo"))
-                objs = cmd.split('|')[0].strip().split()[1:]
+                if cmd.startswith("echo"):
+                    objs = cmd.split('|')[0].strip().split()[1:]
+                elif cmd.startswith("printf"):
+                    objs = cmd.split('|')[0].strip().split()[3:]
+                else:
+                    continue
                 bcfiles = []
                 for obj in objs:
                     if os.path.basename(obj) == "built-in.a":
@@ -39,12 +43,12 @@ for root,_,files in os.walk(linux_build):
         #        + ['cDPrST', os.path.join(root, f+".bcmerged")] \
         #        + bcfiles
         cmd = ['llvm-link'] \
-                + ['-o', os.path.join(root, f+".bcmerged"), '--only-needed'] \
-                + bcfiles
+            + ['-o', os.path.join(root, f+".bcmerged"), '--only-needed'] \
+            + bcfiles
         print(cmd)
 
         if None in pool:
-            pool[pool.index(None)] = subprocess.Popen(cmd)
+            pool[pool.index(None)] = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
         if None not in pool:
             while False not in map(lambda x: x.poll()==None, pool):
                 time.sleep(1)

@@ -64,12 +64,12 @@ def resolve_from_mk(f, linux_src, toplevel=True):
                     rules[-1] += line
                     combflag = False
             elif re.match(f'^{os.path.basename(f).split(".")[0]+".o"}\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-objs\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-y\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-m\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-\$\(', line) \
-                    or re.match(f'^\$\(obj\)/{os.path.basename(f).split(".")[0]}\.o\s*:', line) \
-                    or (toplevel and re.match(f'^obj-\$\(CONFIG_.*\)\s*\+=\s*{os.path.basename(f).split(".")[0]}', line)):
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-objs\s*[:+=]', line) \
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-y\s*[:+=]', line) \
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-m\s*[:+=]', line) \
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-\$\(', line) \
+                or re.match(f'^\$\(obj\)/{os.path.basename(f).split(".")[0]}\.o\s*:', line) \
+                or (toplevel and re.match(f'^obj-\$\(CONFIG_.*\)\s*\+=\s*{os.path.basename(f).split(".")[0]}', line)):
                 #print("macro start", line)
                 if line.endswith('\\'):
                     rules.append(line[:-1])
@@ -108,7 +108,7 @@ def get_pats(patlist):
     with open(patlist, 'r') as fd:
         for line in fd.read().strip().split('\n'):
             modpats.append(
-                    re.compile(r"{}\s*\((.*)\)".format(line.strip())))
+                re.compile(r"{}\s*\((.*)\)".format(line.strip())))
     #initpat = re.compile(r"module_init\((.*)\)")
     #usbpat = re.compile(r"module_usb_driver\((.*)\)")
     #hidpat = re.compile(r"module_hid_driver\((.*)\)")
@@ -241,23 +241,27 @@ def get_bcmap(modinit_map, linux_src):
                         data = fd.read()
                         tag = data.split(':=')[0].strip()[4:]
                         cmd = data.split(';')[1].strip()
-                        assert(cmd.startswith("echo"))
-                        objs = cmd.split('|')[0].strip().split()[1:]
+                        if cmd.startswith("echo"):
+                            objs = cmd.split('|')[0].strip().split()[1:]
+                        elif cmd.startswith("printf"):
+                            objs = cmd.split('|')[0].strip().split()[3:]
+                        else:
+                            continue
                         #cfiles = [os.path.join(os.path.relpath(root, linux_build), obj) for obj in objs]
                         for obj in objs:
                             if os.path.basename(obj).startswith("built-in"):
                                 btin = os.path.join(
-                                        os.path.dirname(f),
-                                        os.path.dirname(obj),
-                                        ".built-in.a.cmd")
+                                    os.path.dirname(f),
+                                    os.path.dirname(obj),
+                                    ".built-in.a.cmd")
                                 wq.append(btin)
                                 continue
                             assert (obj[-2] == ".")
                             key = os.path.normpath(
-                                    os.path.join(
-                                        os.path.relpath(root, linux_build),
-                                        os.path.dirname(f),
-                                        obj[:-2]+'.c'))
+                                os.path.join(
+                                    os.path.relpath(root, linux_build),
+                                    os.path.dirname(f),
+                                    obj[:-2]+'.c'))
                             print(os.path.join(linux_src, key))
                             # Skip assembly
                             if os.path.exists(os.path.join(linux_src, key[:-2]+'.S')):

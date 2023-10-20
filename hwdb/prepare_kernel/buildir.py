@@ -23,7 +23,7 @@ for f in cmd_files:
     with open(f, 'r') as fd:
         data = fd.read()
         for line in data.split('\n'):
-            if line.startswith('cmd_'):
+            if line.startswith('cmd_') or line.startswith('savedcmd'):
                 cmd = line[line.find(' := ')+4:]
                 if ';' in cmd:
                     cmd = cmd[:cmd.find(';')]
