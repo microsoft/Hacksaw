@@ -1,8 +1,10 @@
 #!/bin/bash
 
-KERN_SRC=$(realpath "$1")
-curdir=$(dirname $(realpath $0))
+KERNEL_SRC_PATH="$1"
+KERNEL_BUILD_PATH="$2"
+OUTPUT_PATH="$3"
+CURDIR=$(dirname $(realpath $0))
 
-find ${KERN_SRC}/build_llvm -name "*.bc" > ${curdir}/allbc.list
-${curdir}/modinitcb.sh ${KERN_SRC}
-${curdir}/modinitcb.py ${KERN_SRC}
+find $KERNEL_BUILD_PATH -name "*.bc" > ${OUTPUT_PATH}/allbc.log
+${CURDIR}/modinitcb.sh ${KERNEL_SRC_PATH} ${OUTPUT_PATH}
+${CURDIR}/modinitcb.py ${KERNEL_SRC_PATH} ${KERNEL_BUILD_PATH} ${OUTPUT_PATH}

@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <stdexcept>
 
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
@@ -67,7 +68,9 @@ static std::map<std::string, std::set<std::string>> modcb_db;
 template <class T>
 T _get_const_int(llvm::Constant *I) {
     llvm::ConstantInt *ci = llvm::dyn_cast<llvm::ConstantInt>(I);
-    assert (ci && ci->getBitWidth() == (sizeof(T)*8));
+    // assert (ci && ci->getBitWidth() == (sizeof(T)*8));
+    if (!ci || ci->getBitWidth() != (sizeof(T)*8))
+        throw std::domain_error("get_const_int");
     return ci->getZExtValue();
 }
 
@@ -96,7 +99,7 @@ llvm::Constant *strip_padding(llvm::Constant *st) {
     //    }
     //}
     if (st->getType()->isStructTy() \
-      && llvm::dyn_cast<llvm::StructType>(st->getType())->isLiteral()) {
+            && llvm::dyn_cast<llvm::StructType>(st->getType())->isLiteral()) {
         st = st->getAggregateElement(0u);
     }
     return st;
@@ -105,40 +108,40 @@ llvm::Constant *strip_padding(llvm::Constant *st) {
 /* Handles increment/decrement of BCD formatted integers */
 /* Returns the previous value, so it works like i++ or i-- */
 static unsigned int incbcd(unsigned int *bcd,
-			   int inc,
-			   unsigned char max,
-			   size_t chars)
+        int inc,
+        unsigned char max,
+        size_t chars)
 {
-	unsigned int init = *bcd, i, j;
-	unsigned long long c, dec = 0;
+    unsigned int init = *bcd, i, j;
+    unsigned long long c, dec = 0;
 
-	/* If bcd is not in BCD format, just increment */
-	if (max > 0x9) {
-		*bcd += inc;
-		return init;
-	}
+    /* If bcd is not in BCD format, just increment */
+    if (max > 0x9) {
+        *bcd += inc;
+        return init;
+    }
 
-	/* Convert BCD to Decimal */
-	for (i=0 ; i < chars ; i++) {
-		c = (*bcd >> (i << 2)) & 0xf;
-		c = c > 9 ? 9 : c; /* force to bcd just in case */
-		for (j=0 ; j < i ; j++)
-			c = c * 10;
-		dec += c;
-	}
+    /* Convert BCD to Decimal */
+    for (i=0 ; i < chars ; i++) {
+        c = (*bcd >> (i << 2)) & 0xf;
+        c = c > 9 ? 9 : c; /* force to bcd just in case */
+        for (j=0 ; j < i ; j++)
+            c = c * 10;
+        dec += c;
+    }
 
-	/* Do our increment/decrement */
-	dec += inc;
-	*bcd  = 0;
+    /* Do our increment/decrement */
+    dec += inc;
+    *bcd  = 0;
 
-	/* Convert back to BCD */
-	for (i=0 ; i < chars ; i++) {
-		for (c=1,j=0 ; j < i ; j++)
-			c = c * 10;
-		c = (dec / c) % 10;
-		*bcd += c << (i << 2);
-	}
-	return init;
+    /* Convert back to BCD */
+    for (i=0 ; i < chars ; i++) {
+        for (c=1,j=0 ; j < i ; j++)
+            c = c * 10;
+        c = (dec / c) % 10;
+        *bcd += c << (i << 2);
+    }
+    return init;
 }
 
 std::string get_const_str(llvm::Constant *buf) {
@@ -230,14 +233,14 @@ void dump_acpi_id(llvm::Constant *idtab, std::string entrypoint, std::string mod
                 << "acpi*:";
 
             // ?? Starting from 1? (ref: scripts/mod/file2alias.c)
-		    for (int i = 1; i <= 3; i++) {
-		    	int byte_shift = 8 * (3-i);
-		    	unsigned int msk = (cls_mask->getZExtValue() >> byte_shift) & 0xFF;
-		    	if (msk)
+            for (int i = 1; i <= 3; i++) {
+                int byte_shift = 8 * (3-i);
+                unsigned int msk = (cls_mask->getZExtValue() >> byte_shift) & 0xFF;
+                if (msk)
                     output << std::uppercase << std::setfill('0') << std::setw(2) << std::hex << ((cls->getZExtValue() >> byte_shift)&0xFF);
-		    	else
+                else
                     output << "??";
-		    }
+            }
             output << ":*\n";
         }
     }
@@ -307,32 +310,32 @@ void dump_pci_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
 #define do_usb_entry(bcdDevice_initial, bcdDevice_initial_digits, \
         range_lo, range_hi, max)    \
         output << "usb_device_id" << " "    \
-            << entrypoint.c_str() << " "    \
-            << modname << " ";  \
+        << entrypoint.c_str() << " "    \
+        << modname << " ";  \
         output << "usb:";   \
         _add(output, "v", match_flags&0x1/*USB_DEVICE_ID_MATCH_VENDOR*/, 2, idVendor); \
         _add(output, "p", match_flags&0x2/*USB_DEVICE_ID_MATCH_PRODUCT*/, 2, idProduct); \
         output << "d";  \
         if (bcdDevice_initial_digits) \
-            output << std::uppercase << std::setfill('0') << std::setw(bcdDevice_initial_digits) << std::hex << bcdDevice_initial;  \
+        output << std::uppercase << std::setfill('0') << std::setw(bcdDevice_initial_digits) << std::hex << bcdDevice_initial;  \
         if (range_lo == range_hi)   \
-            output << std::uppercase << std::hex << (int)range_lo; \
+        output << std::uppercase << std::hex << (int)range_lo; \
         else if (range_lo > 0 || range_hi < max) {  \
             if (range_lo > 0x9 || range_hi < 0xA)   \
-                output << "[" << std::uppercase << std::hex << (int)range_lo << "-" << std::uppercase << std::hex << (int)range_hi << "]";    \
+            output << "[" << std::uppercase << std::hex << (int)range_lo << "-" << std::uppercase << std::hex << (int)range_hi << "]";    \
             else {  \
                 if (range_lo < 0x9) \
-                    output << "[" << std::uppercase << std::hex << (int)range_lo << "-9";    \
+                output << "[" << std::uppercase << std::hex << (int)range_lo << "-9";    \
                 else    \
-                    output << "[" << std::uppercase << std::hex << (int)range_lo;    \
+                output << "[" << std::uppercase << std::hex << (int)range_lo;    \
                 if (range_hi > 0xA) \
-                    output << "A-" << std::uppercase << std::hex << (int)range_hi << "]";    \
+                output << "A-" << std::uppercase << std::hex << (int)range_hi << "]";    \
                 else    \
-                    output << std::uppercase << std::hex << (int)range_hi << "]";    \
+                output << std::uppercase << std::hex << (int)range_hi << "]";    \
             }   \
         }   \
         if (bcdDevice_initial_digits < (sizeof(bcdDevice_lo) * 2 - 1))  \
-            output << "*";  \
+        output << "*";  \
         _add(output, "dc", match_flags&0x10/*USB_DEVICE_ID_MATCH_DEV_CLASS*/, 1, bDeviceClass); \
         _add(output, "dsc", match_flags&0x20/*USB_DEVICE_ID_MATCH_DEV_SUBCLASS*/, 1, bDeviceSubClass);  \
         _add(output, "dp", match_flags&0x40/*USB_DEVICE_ID_MATCH_DEV_PROTOCOL*/, 1, bDeviceProtocol);   \
@@ -341,7 +344,7 @@ void dump_pci_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
         _add(output, "ip", match_flags&0x200/*USB_DEVICE_ID_MATCH_INT_PROTOCOL*/, 1, bInterfaceProtocol);   \
         _add(output, "in", match_flags&0x400/*USB_DEVICE_ID_MATCH_INT_NUMBER*/, 1, bInterfaceNumber);   \
         if (match_flags&0x400)    \
-            output << "*";  \
+        output << "*";  \
         output << "\n";
 
 void dump_usb_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
@@ -514,21 +517,21 @@ void dump_spi_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
 
 static inline void __endian(const void *src, void *dest, unsigned int size)
 {
-	unsigned int i;
-	for (i = 0; i < size; i++)
-		((unsigned char*)dest)[i] = ((unsigned char*)src)[size - i-1];
+    unsigned int i;
+    for (i = 0; i < size; i++)
+        ((unsigned char*)dest)[i] = ((unsigned char*)src)[size - i-1];
 }
 
 static void do_input(std::ofstream &output, llvm::Constant *arr, unsigned int min) {
-	unsigned int i;
+    unsigned int i;
     uint64_t bits = sizeof(uint64_t)*8;
     llvm::Constant *e;
-	for (i = min; e = arr->getAggregateElement(i/bits); i++) {
+    for (i = min; e = arr->getAggregateElement(i/bits); i++) {
         if (e->isNullValue())   continue;
         uint64_t ent = _get_const_int<uint64_t>(e);
         uint64_t nent = ent;
         //__endian(&ent, &nent, sizeof(nent));
-		if (nent & (1L << (i%bits)))
+        if (nent & (1L << (i%bits)))
             output << std::uppercase << std::hex << i << ",*";
     }
 }
@@ -536,7 +539,9 @@ static void do_input(std::ofstream &output, llvm::Constant *arr, unsigned int mi
 void dump_input_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
+        if (!e->getType()->isStructTy())
+            throw std::domain_error("dump_input_id");
+        // assert (e->getType()->isStructTy());
         //assert (e->getType()->getStructName().equals("struct.i2c_device_id"));
         //e->dump();
         if (e->isNullValue())   break;
@@ -645,7 +650,7 @@ void _handle_platform(llvm::Constant *devdrv, std::string entrypoint, std::strin
 
     devdrv = strip_padding(devdrv);
     assert (devdrv->getType()->getStructName().equals("struct.device_driver")
-		    || devdrv->getType()->getStructName().startswith("struct.device_driver."));
+            || devdrv->getType()->getStructName().startswith("struct.device_driver."));
 
     llvm::Constant *name = devdrv->getAggregateElement(0u);
     llvm::Constant *of_id = devdrv->getAggregateElement(6u);
@@ -908,31 +913,31 @@ void dispatch_callinst(llvm::CallBase *call, const std::string &inputfile, std::
     if (DEBUG) arg->dump();
     if (!llvm::isa<llvm::GlobalVariable>(arg)) {
         errout << inputfile << "\n";
-	std::queue<llvm::User*> wq;
-	std::set<llvm::User*> seen({call});
+        std::queue<llvm::User*> wq;
+        std::set<llvm::User*> seen({call});
         for (auto &use : arg->uses()) {
             //use->dump();
-	    //use.getUser()->dump();
-	    wq.push(use.getUser());
+            //use.getUser()->dump();
+            wq.push(use.getUser());
         }
-	while (!wq.empty()) {
-	    llvm::User *u = wq.front();
-	    wq.pop();
-	    if (seen.find(u) != seen.end())
-	        continue;
-	    seen.insert(u);
-	    if (llvm::isa<llvm::GlobalVariable>(u)) {
-	        arg = llvm::dyn_cast<llvm::GlobalVariable>(u);
-	        break;
-	    }
-	    if (llvm::isa<llvm::PHINode>(u)) {
-		llvm::PHINode *phi = llvm::dyn_cast<llvm::PHINode>(u);
+        while (!wq.empty()) {
+            llvm::User *u = wq.front();
+            wq.pop();
+            if (seen.find(u) != seen.end())
+                continue;
+            seen.insert(u);
+            if (llvm::isa<llvm::GlobalVariable>(u)) {
+                arg = llvm::dyn_cast<llvm::GlobalVariable>(u);
+                break;
+            }
+            if (llvm::isa<llvm::PHINode>(u)) {
+                llvm::PHINode *phi = llvm::dyn_cast<llvm::PHINode>(u);
                 for (auto &iv : phi->incoming_values()) {
-		    wq.push(iv.getUser());
-		}
-	    }
-	}
-	if (!llvm::isa<llvm::GlobalVariable>(arg))
+                    wq.push(iv.getUser());
+                }
+            }
+        }
+        if (!llvm::isa<llvm::GlobalVariable>(arg))
             return;
     }
     assert (llvm::isa<llvm::GlobalVariable>(arg));
@@ -953,10 +958,10 @@ void dispatch_callinst(llvm::CallBase *call, const std::string &inputfile, std::
             log_err(errout, inputfile, pcidesc);
     } else if (pcidesc->getType()->isArrayTy()) {
         llvm::Type* elemty = pcidesc->getType()->getArrayElementType();
-    	if (elemty->isStructTy() && elemty->getStructName().equals("struct.pci_device_id")) {
+        if (elemty->isStructTy() && elemty->getStructName().equals("struct.pci_device_id")) {
             dump_pci_id(pcidesc, entrypoint, modname, output);
-	    return;
-	}
+            return;
+        }
         llvm::Constant *pdrv, *drv;
         for (int i = 0; pdrv = pcidesc->getAggregateElement(i); i++) {
             if (!pdrv)   break;
@@ -1077,14 +1082,19 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
                                 != pci_register_func.end()) {
 
                             regcalls.erase(call);
-                            dispatch_callinst(call, inputfile, entrypoint, modname, output, errout);
+                            try {
+                                dispatch_callinst(call, inputfile, entrypoint, modname, output, errout);
+                            }
+                            catch (std::domain_error& e) {
+                                continue;
+                            }
                         }
                     }
                 }
             }
         }
     }
-    
+
     // Fixup Driver/Module
     if (!regcalls.empty() && inputfile.find(".mod.bcmerged") != std::string::npos) {
         for (auto call : regcalls) {
@@ -1152,36 +1162,36 @@ int main(int argc, char **argv) {
     llvm::SMDiagnostic ctxerr;
     llvm::LLVMContext context;
     do {
-    	sz = regapis.size();
-    	for (auto bc : allbclist) {
-    	    std::unique_ptr<llvm::Module> module = llvm::parseIRFile(bc, ctxerr, context);
-    	    if (!module)	continue;
-           	    for (auto func = module->begin(); func != module->end(); func++) {
-    	        for (auto bb = func->begin(); bb != func->end(); bb++) {
-    	            for (auto inst = bb->begin(); inst != bb->end(); inst++) {
-    	                llvm::Instruction *i = &(*inst);
-    	                if(llvm::isa<llvm::CallBase>(i)) {
-    	                    llvm::CallBase *call = llvm::dyn_cast<llvm::CallBase>(i);
-    	                    if (call->isInlineAsm() || call->isIndirectCall())    continue;
-    	                    //  %call6 = call i32 null(ptr noundef %skb, ptr noundef %data.i)
-    	                    if (llvm::isa<llvm::ConstantPointerNull>(call->getCalledOperand())) continue;
-                    	    if (known_apis.find(call->getCalledOperand()->getName().str()) \
-                    	            != known_apis.end()) {
-    	    		        regapis[func->getName().str()] = module->getName().str();
-                    	    }
-    	                }
-    	            }
-    	        }
-    	    }
-    	}
-    	for (auto api : regapis) {
-     	    if (api.first == "init_module")	continue;
-    	    known_apis.insert(api.first);
-    	}
+        sz = regapis.size();
+        for (auto bc : allbclist) {
+            std::unique_ptr<llvm::Module> module = llvm::parseIRFile(bc, ctxerr, context);
+            if (!module)	continue;
+            for (auto func = module->begin(); func != module->end(); func++) {
+                for (auto bb = func->begin(); bb != func->end(); bb++) {
+                    for (auto inst = bb->begin(); inst != bb->end(); inst++) {
+                        llvm::Instruction *i = &(*inst);
+                        if(llvm::isa<llvm::CallBase>(i)) {
+                            llvm::CallBase *call = llvm::dyn_cast<llvm::CallBase>(i);
+                            if (call->isInlineAsm() || call->isIndirectCall())    continue;
+                            //  %call6 = call i32 null(ptr noundef %skb, ptr noundef %data.i)
+                            if (llvm::isa<llvm::ConstantPointerNull>(call->getCalledOperand())) continue;
+                            if (known_apis.find(call->getCalledOperand()->getName().str()) \
+                                    != known_apis.end()) {
+                                regapis[func->getName().str()] = module->getName().str();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (auto api : regapis) {
+            if (api.first == "init_module")	continue;
+            known_apis.insert(api.first);
+        }
     } while(sz < regapis.size());
     for (auto api : regapis) {
-    	llvm::outs() << "known_apis: " << api.first << " : " << api.second << "\n";
-    	pci_register_func.insert(api.first);
+        llvm::outs() << "known_apis: " << api.first << " : " << api.second << "\n";
+        pci_register_func.insert(api.first);
     }
     pci_register_func.insert("driver_register");
 

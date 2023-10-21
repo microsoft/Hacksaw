@@ -11,9 +11,9 @@ curdir = os.path.dirname(os.path.realpath(__file__))
 # For new devices, update ~/modinitcb_macro.list and run ~/modinitcb.sh
 # grep -wrF "module_hid_driver" .|grep ":module_hid_driver(" >> ~/modinit.log
 patlist = os.path.join(curdir, "modinitcb_macro.list")
-greplog = os.path.join(curdir, "modinit.log")
-noentrylist = os.path.join(curdir, "noentry.list")
-log = os.path.join(curdir, "modinit.db")
+greplog = 'modinit.log'
+noentrylist = 'noentry.list'
+log = 'modinit.db'
 
 #output = subprocess.check_output(shlex.join([ \
 #        'grep', '-wrF', '"module_init"', \
@@ -181,17 +181,15 @@ def get_initmap(greplog, linux_src, modpats):
     return modinit_map
 
 # find link info
-def get_bcmap(modinit_map, linux_src):
+def get_bcmap(modinit_map, linux_src, linux_build):
     bclist = set()
     foundfile = set()
     modcb = dict()
     noentry = set()
     nobc = set()
-    linux_build = os.path.join(linux_src, "build_llvm")
     for root,_,files in os.walk(linux_build):
         for f in files:
             if f.endswith('.mod'):
-                #continue
                 m = os.path.join(root, f[:-4]+".ko")
                 assert (os.path.exists(m))
                 output = subprocess.check_output([os.path.join(curdir, "..", "..", "utils", "get-mod-init.sh"), m])
@@ -303,8 +301,15 @@ def get_bcmap(modinit_map, linux_src):
 
 if __name__ == '__main__':
     linux_src = os.path.abspath(sys.argv[1])
+    linux_build = os.path.abspath(sys.argv[2])
+    outdir = os.path.abspath(sys.argv[3])
+
+    greplog = os.path.join(outdir, greplog)
+    noentrylist = os.path.join(outdir, noentrylist)
+    log = os.path.join(outdir, log)
+
     modinit_map = get_initmap(greplog, linux_src, get_pats(patlist))
-    modcb,_,foundfile,noentry,_ = get_bcmap(modinit_map, linux_src)
+    modcb,_,foundfile,noentry,_ = get_bcmap(modinit_map, linux_src, linux_build)
     with open(noentrylist, 'w') as fd:
         for tsk in noentry:
             assert (tsk.endswith(".mod"))
