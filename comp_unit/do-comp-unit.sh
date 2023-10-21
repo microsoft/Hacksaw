@@ -19,14 +19,18 @@ OBJ_KCONF_DB="${OUTPUT_PATH}/obj-kconf.db"
 BUILD_DEP_OUT="${OUTPUT_PATH}/build-dep.raw"
 BUILTIN_DEP="${OUTPUT_PATH}/builtin-objs.dep"
 
-KERNEL_CONF="${OUTPUT_PATH}/dotconfig"
+if [ $# -eq 2 ]; then
+  KERNEL_CONF="$2"
+else
+  KERNEL_CONF="$BUILDDIR/linux-$KERNEL_VER/.config"
+fi
 
 if [ ! -f "${KERNEL_CONF}" ]; then
   echo "$KERNEL_CONF does not exist."
   exit 1
 fi
 
-mkdir -p ${BUILD_PATH}
+mkdir -p ${KMAX_BUILD_PATH}
 mkdir -p ${OUTPUT_PATH}
 
 if [ ! -d "$KERNEL_SRC_PATH" ]; then
