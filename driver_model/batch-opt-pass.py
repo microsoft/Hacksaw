@@ -71,7 +71,10 @@ def load_configs(args: Namespace) -> Dict:
 def extract_bc_cmd(bc):
     global pass_object
     global pass_name
-    os.system("opt -load {0} -enable-new-pm=0 --{1} -o /dev/null {2} 2>{2}.out".format(pass_object, pass_name, bc))
+    try:
+        os.system("opt -load {0} -enable-new-pm=0 --{1} -o /dev/null {2} 2>{2}.out".format(pass_object, pass_name, bc))
+    except:
+        None
 
 def main(args: Namespace = parse_arguments()) -> int:
     try:
@@ -81,7 +84,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         global bcs
 
         if len(bcs) == 0:
-            p = subprocess.run(['find', kernel_path, '-name', '*.hacksaw.bc'], capture_output=True, text=True)
+            p = subprocess.run(['find', kernel_path, '-name', '*.o.bc', '-o', '-name', '*.bcmerged'], capture_output=True, text=True)
             bcs = p.stdout.split()
 
         pool = mp.Pool(nworkers)
@@ -89,8 +92,10 @@ def main(args: Namespace = parse_arguments()) -> int:
         pool.close()
         pool.join()
 
-        os.system("find " + kernel_path + " -name '*.hacksaw.bc.out' -exec cat {} \;")
-        os.system("find " + kernel_path + " -name '*.hacksaw.bc.out' -exec rm -f {} \;")
+        os.system("find " + kernel_path + " -name '*.o.bc.out' -exec cat {} \;")
+        os.system("find " + kernel_path + " -name '*.bcmerged.out' -exec cat {} \;")
+        os.system("find " + kernel_path + " -name '*.o.bc.out' -exec rm -f {} \;")
+        os.system("find " + kernel_path + " -name '*.bcmerged.out' -exec rm -f {} \;")
 
     except KeyboardInterrupt:
         print("Keyboard interrupt", file=sys.stderr)
