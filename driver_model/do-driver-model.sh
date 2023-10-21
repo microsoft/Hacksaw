@@ -45,7 +45,7 @@ ${CURDIR}/batch-opt-pass.py -k $KERNEL_BUILD_PATH/ -o $DRVMOD_BUILD_PATH/$DRVDEV
 
 LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+\/"
 
-cat $OUTPUT_PATH/bus-regfuns.raw | grep -a '^bus: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq > $OUTPUT_PATH/bus-regfuns.db
-cat $OUTPUT_PATH/class-regfuns.raw | grep -a '^class: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq > $OUTPUT_PATH/class-regfuns.db
+cat $OUTPUT_PATH/bus-regfuns.raw | grep -a '^bus: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/bus-regfuns.db
+cat $OUTPUT_PATH/class-regfuns.raw | grep -a '^class: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/class-regfuns.db
 
 cat $OUTPUT_PATH/builtin-objs.raw | sed "s/$LINUX_PREFIX//" | sort | uniq > $OUTPUT_PATH/builtin-objs.db
