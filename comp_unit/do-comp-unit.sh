@@ -49,3 +49,5 @@ cat $OUTPUT_PATH/builtin-objs.raw | sed "s/$LINUX_PREFIX//" | sort | uniq > $BUI
 ${CURDIR}/get-obj-kconf-expr.py -k ${KERNEL_SRC_PATH} -o ${KMAX_BUILD_PATH} -n $(nproc) > ${OBJ_KCONF_DB}
 ${CURDIR}/get-build-deps.py -f ${OBJ_KCONF_DB} -c ${KERNEL_CONF} -b ${BUILTIN_OBJS} -n $(nproc) > ${BUILD_DEP_OUT}
 cat ${BUILD_DEP_OUT} | ${CURDIR}/gen-dep.py | sort | uniq > ${BUILTIN_DEP}
+
+touch /tmp/compunit.done

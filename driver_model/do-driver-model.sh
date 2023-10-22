@@ -45,3 +45,5 @@ LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+\/"
 
 cat $OUTPUT_PATH/bus-regfuns.raw | grep -a '^bus: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/bus-regfuns.db
 cat $OUTPUT_PATH/class-regfuns.raw | grep -a '^class: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/class-regfuns.db
+
+touch /tmp/drvmod.done

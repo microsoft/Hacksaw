@@ -26,3 +26,5 @@ ${BUILDDIR}/platform/platformdb \
     -a ${KERNEL_BUILD_PATH}/mod_install/lib/modules/${KERNELRELEASE}/modules.alias \
     -l ${OUTPUT_PATH}/allbc.list \
     -o ${OUTPUT_PATH}/hw.db
+
+touch /tmp/hw.done
