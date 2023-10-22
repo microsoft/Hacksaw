@@ -31,8 +31,6 @@ popd
 
 mkdir -p $OUTPUT_PATH
 
-${CURDIR}/get-builtin-objs.py -k $KERNEL_BUILD_PATH > $OUTPUT_PATH/builtin-objs.raw
-
 ${CURDIR}/batch-opt-pass.py -k $KERNEL_BUILD_PATH -o $DRVMOD_BUILD_PATH/$BUSCLASS/libBusClassPass.so -p $BUSCLASS -n $(nproc) | tee $OUTPUT_PATH/busclass.raw
 
 cat $OUTPUT_PATH/busclass.raw | grep -a '^bus: ' | sort | uniq > $OUTPUT_PATH/busdrv.raw
@@ -47,5 +45,3 @@ LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+\/"
 
 cat $OUTPUT_PATH/bus-regfuns.raw | grep -a '^bus: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/bus-regfuns.db
 cat $OUTPUT_PATH/class-regfuns.raw | grep -a '^class: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/class-regfuns.db
-
-cat $OUTPUT_PATH/builtin-objs.raw | sed "s/$LINUX_PREFIX//" | sort | uniq > $OUTPUT_PATH/builtin-objs.db

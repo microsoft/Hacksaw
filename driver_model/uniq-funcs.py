@@ -17,7 +17,7 @@ def main() -> int:
         for func in func_objs.keys():
             done = False
             for obj in func_objs[func]:
-                if obj[-5:] == '.o.bc':
+                if obj[-5:] == '.bc':
                     print(obj, func)
                     done = True
                     break

@@ -6,9 +6,6 @@
 import os
 import sys
 import regex
-import multiprocessing as mp
-from argparse import ArgumentParser, Namespace
-from typing import Dict, List
 
 def main() -> int:
     try:

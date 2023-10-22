@@ -84,7 +84,7 @@ def main(args: Namespace = parse_arguments()) -> int:
         global bcs
 
         if len(bcs) == 0:
-            p = subprocess.run(['find', kernel_path, '-name', '*.o.bc', '-o', '-name', '*.bcmerged'], capture_output=True, text=True)
+            p = subprocess.run(['find', kernel_path, '-name', '*.bc', '-o', '-name', '*.bcmerged'], capture_output=True, text=True)
             bcs = p.stdout.split()
 
         pool = mp.Pool(nworkers)
@@ -92,9 +92,9 @@ def main(args: Namespace = parse_arguments()) -> int:
         pool.close()
         pool.join()
 
-        os.system("find " + kernel_path + " -name '*.o.bc.out' -exec cat {} \;")
+        os.system("find " + kernel_path + " -name '*.bc.out' -exec cat {} \;")
         os.system("find " + kernel_path + " -name '*.bcmerged.out' -exec cat {} \;")
-        os.system("find " + kernel_path + " -name '*.o.bc.out' -exec rm -f {} \;")
+        os.system("find " + kernel_path + " -name '*.bc.out' -exec rm -f {} \;")
         os.system("find " + kernel_path + " -name '*.bcmerged.out' -exec rm -f {} \;")
 
     except KeyboardInterrupt:

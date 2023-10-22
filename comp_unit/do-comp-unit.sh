@@ -12,6 +12,7 @@ BUILDDIR="${ROOTDIR}/build/"
 OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 
 KERNEL_SRC_PATH="$ROOTDIR/kernel/src/linux-$KERNEL_VER/"
+KERNEL_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER/"
 
 KMAX_BUILD_PATH="${BUILDDIR}/kmax-${KERNEL_VER}"
 BUILTIN_OBJS="${OUTPUT_PATH}/builtin-objs.db"
@@ -33,9 +34,17 @@ fi
 mkdir -p ${KMAX_BUILD_PATH}
 mkdir -p ${OUTPUT_PATH}
 
+if [ ! -d "$KERNEL_BUILD_PATH" ]; then
+  echo "Linux kernel built is required. Run /kernel/prepare_kernel.sh $KERNEL_VER first"
+  exit 1
+fi
+
 if [ ! -d "$KERNEL_SRC_PATH" ]; then
   wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ -C $(dirname $KERNEL_SRC_PATH)
 fi
+
+${CURDIR}/get-builtin-objs.py -k $KERNEL_BUILD_PATH > $OUTPUT_PATH/builtin-objs.raw
+cat $OUTPUT_PATH/builtin-objs.raw | sed "s/$LINUX_PREFIX//" | sort | uniq > $BUILTIN_OBJS
 
 ${CURDIR}/get-obj-kconf-expr.py -k ${KERNEL_SRC_PATH} -o ${KMAX_BUILD_PATH} -n $(nproc) > ${OBJ_KCONF_DB}
 ${CURDIR}/get-build-deps.py -f ${OBJ_KCONF_DB} -c ${KERNEL_CONF} -b ${BUILTIN_OBJS} -n $(nproc) > ${BUILD_DEP_OUT}

@@ -15,7 +15,7 @@ for root,_,files in os.walk(linux_build):
     for f in files:
         if f.endswith('.mod'):
             with open(os.path.join(root, f), 'r') as fd:
-                bcfiles = [os.path.join(linux_build, obj+".bc") for obj in fd.read().strip().split('\n')]
+                bcfiles = [os.path.join(linux_build, obj[:-1]+"bc") for obj in fd.read().strip().split('\n')]
         elif f == ".built-in.a.cmd":
             with open(os.path.join(root, f), 'r') as fd:
                 data = fd.read()
@@ -31,7 +31,7 @@ for root,_,files in os.walk(linux_build):
                     if os.path.basename(obj) == "built-in.a":
                         bcfiles.append(os.path.join(root, os.path.dirname(obj), f".{os.path.basename(obj)}.cmd.bcmerged"))
                     else:
-                        bcfiles.append(os.path.join(root, obj+".bc"))
+                        bcfiles.append(os.path.join(root, obj[:-1]+"bc"))
                 if len(bcfiles) == 0:
                     for ff in files:
                         if ff.endswith('.bc') or ff.endswith('.bcmerged'):
