@@ -21,7 +21,6 @@ RUN apt update \
     kmod \
   && pip install --upgrade pip \
   && pip install \
-    wllvm \
     z3-solver \
     kmax
 
@@ -34,5 +33,8 @@ RUN update-alternatives \
   --slave /usr/bin/opt opt /usr/bin/opt-15
 
 RUN mkdir -p /hacksaw
-RUN chmod 777 /hacksaw
 WORKDIR /hacksaw
+
+COPY ./entrypoint.sh /
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
