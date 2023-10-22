@@ -2,7 +2,7 @@
 
 KERN_SRC=$(realpath "$1")
 curdir=$(dirname $(realpath $0))
-OUTPUT_DIR=$(dirname ${curdir})
+OUTPUT_DIR=$(dirname ${curdir})/out
 KERNELRELEASE=$(cat ${KERN_SRC}/build_llvm/include/config/kernel.release 2> /dev/null)
 
 ${curdir}/prepare_kernel/prepare_kernel.sh ${KERN_SRC}

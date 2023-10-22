@@ -41,17 +41,24 @@ def disasm_test(fn, off):
                 break
     return patch_range
 
-def disasm(fn, off, raw_off=False):
+def get_text_rel(fn):
+    out = subprocess.check_output(' '.join(['readelf', '-S', f'{fn}', '|', 'grep', '"\.text"']), shell=True)
+    for line in out.decode('latin-1').split('\n'):
+        line = line.strip()
+        if '.text' in line.split():
+            data = line.split('.text')[1].strip()
+            text_va = int(data.split()[1], 16)
+            text_off = int(data.split()[2], 16)
+            return text_off, text_va
+    return (0, 0)
+
+def disasm(fn, off, raw_off=False, text_rel=None):
     text_va = 0
     text_off = 0
-    if not raw_off:
-        out = subprocess.check_output(' '.join(['readelf', '-S', f'{fn}', '|', 'grep', '"\.text"']), shell=True)
-        for line in out.decode('latin-1').split('\n'):
-            line = line.strip()
-            if '.text' in line.split():
-                data = line.split('.text')[1].strip()
-                text_va = int(data.split()[1], 16)
-                text_off = int(data.split()[2], 16)
+    if not raw_off and not text_rel:
+        text_off, text_va = get_text_rel(fn)
+    if text_rel:
+        text_off, text_va = text_rel
 
     off += text_off
     patch_range = {}
@@ -60,7 +67,7 @@ def disasm(fn, off, raw_off=False):
     d = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     expected_dis = set()
     #print("DEBUG disas ", hex(off), hex(text_va), hex(text_off), hex(len(data)))
-    for insn in d.disasm(data[off:], text_va):
+    for insn in d.disasm(data[off:off+16], text_va):
         #print(insn)
         if off in expected_dis:
             expected_dis.remove(off)

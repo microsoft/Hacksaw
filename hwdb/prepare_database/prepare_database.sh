@@ -6,3 +6,4 @@ curdir=$(dirname $(realpath $0))
 find ${KERN_SRC}/build_llvm -name "*.bc" > ${curdir}/allbc.list
 ${curdir}/modinitcb.sh ${KERN_SRC}
 ${curdir}/modinitcb.py ${KERN_SRC}
+${curdir}/gen_objdep.sh ${KERN_SRC}
