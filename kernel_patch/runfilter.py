@@ -127,6 +127,9 @@ if __name__ == '__main__':
     else:
         THREADS = 1
 
+    # Do NOT support Multi-Threading for patching the kernel
+    assert (testonly or THREADS == 1)
+
     hwlist = [
             os.path.join(args.dataset_path, "hwenv/aws-t2-micro.txt"),
             os.path.join(args.dataset_path, "hwenv/azure-v1.txt"),
@@ -269,7 +272,7 @@ if __name__ == '__main__':
             chkdir = os.path.abspath(os.path.join(args.output_path, "bigroot", "0"))
             workdir = os.path.abspath(os.path.join(args.output_path, "repack"))
             if not os.path.exists(workdir):
-                os.makedirs(workidir, exist_ok=True)
+                os.makedirs(workdir, exist_ok=True)
             ctl_img = os.path.basename(img)+".ctl"
             patch_img = os.path.basename(img) + os.path.basename(dev).split('.')[0] + ".patched"
             os.system(f"cp '{img}' '{ctl_img}'")
