@@ -1,7 +1,6 @@
 #!/bin/bash
 
 kver=${KERNEL_VER:-none}
-OUTPUT_PATH="/hacksaw/out/$kver/"
 
 if [ "$kver" != "none" ]; then
   /hacksaw/kernel/prepare_kernel.sh $kver
@@ -22,6 +21,6 @@ if [ "$kver" != "none" ]; then
     sleep 5
   done
 else
-  echo 'hacksaw container is ready.'
+  echo 'hacksaw-builder container is ready.'
   sleep infinity
 fi

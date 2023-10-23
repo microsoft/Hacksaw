@@ -1,10 +1,36 @@
-FROM hacksaw:0.1
+FROM python:3.10.12-slim 
+
+ARG USER_ID
+ARG GROUP_ID
 
 ARG BUILD_PREFIX="/hacksaw-build"
 ARG LLVM_SRC="${BUILD_PREFIX}/llvm-project-src"
 ARG LLVM_BUILD="${BUILD_PREFIX}/llvm-build"
 ARG LLVM_INSTALL="${BUILD_PREFIX}/llvm-install"
 ARG LLVM_VER="15.0.7"
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+RUN apt update \
+  && apt install -y --no-install-recommends \
+  && apt install -y \
+    build-essential \
+    libncurses-dev \
+    bison \
+    flex \
+    libssl-dev \
+    libelf-dev \
+    make \
+    cmake \
+    file \
+    bc \
+    cpio \
+    wget \
+    kmod \
+  && pip install --upgrade pip \
+  && pip install \
+    z3-solver \
+    kmax
 
 RUN mkdir -p ${LLVM_SRC} \
   && mkdir -p ${LLVM_BUILD} \
@@ -36,3 +62,13 @@ RUN mkdir -p ${LLVM_SRC} \
   && make install-llvm-headers \
   && cd ${BUILD_PREFIX} \
   && rm -rf ${LLVM_SRC} ${LLVM_BUILD}
+
+RUN groupadd -g ${USER_ID} hacksaw
+RUN useradd -u ${USER_ID} -g ${USER_ID} -m hacksaw
+
+RUN mkdir -p /hacksaw
+WORKDIR /hacksaw
+
+COPY ./entrypoint.sh /
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
