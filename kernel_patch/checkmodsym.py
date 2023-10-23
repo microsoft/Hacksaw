@@ -4,26 +4,46 @@ import os
 import sys
 import itertools
 import subprocess
+import tempfile
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
+from elftools.elf.descriptions import (
+    describe_symbol_type, describe_symbol_bind, describe_symbol_visibility,
+    describe_symbol_shndx, describe_reloc_type, describe_dyn_tag,
+    describe_symbol_other
+    )
 
-
-LINUX_BUILD = "./linux/build_llvm"
 
 def get_noentry(linux_build_dir):
     noentry = set()
     for root,_,mods in os.walk(linux_build_dir):
         for mod in mods:
+            temp = False
             kopath = os.path.join(root, mod)
             if mod.endswith(".ko.zst"):
-                kopath = "/tmp/unpack_tmp.ko"
+                temp = True
+                kopath = tempfile.mkstemp(suffix=".ko", dir="/tmp/")[1]
                 os.system(f"zstdcat {os.path.join(root, mod)} > {kopath}")
             if mod.endswith(".ko.xz"):
-                kopath = "/tmp/unpack_tmp.ko"
+                temp = True
+                kopath = tempfile.mkstemp(suffix=".ko", dir="/tmp/")[1]
                 os.system(f"xzcat {os.path.join(root, mod)} > {kopath}")
             if kopath.endswith(".ko"):
-                output = subprocess.check_output(['nm', kopath])
-                syms = [l.strip().split()[-1] for l in output.decode('latin-1').strip().split('\n')]
-                if 'init_module' not in syms:
+                flag = False
+                with open(kopath, 'rb') as fd:
+                    elf = ELFFile(fd)
+                    for sec in elf.iter_sections():
+                        if not isinstance(sec, SymbolTableSection):
+                            continue
+                        for sym in sec.iter_symbols():
+                            flag = flag or (sym.name == 'init_module')
+                #output = subprocess.check_output(['nm', kopath])
+                #syms = [l.strip().split()[-1] for l in output.decode('latin-1').strip().split('\n')]
+                #if 'init_module' not in syms:
+                if not flag:
                     noentry.add(os.path.join(root, mod))
+            if temp:
+                os.system(f"rm {kopath}")
     return noentry
 
 def get_deps(linux_build_dir):
@@ -55,12 +75,30 @@ def get_deps(linux_build_dir):
 def get_sym(mod, symty):
     symlist = []
     kopath = mod
+    temp = False
     if mod.endswith(".ko.zst"):
-        kopath = "/tmp/unpack_tmp.ko"
+        temp = True
+        kopath = tempfile.mkstemp(suffix=".ko", dir="/tmp/")[1]
         os.system(f"zstdcat {mod} > {kopath}")
     if mod.endswith(".ko.xz"):
-        kopath = "/tmp/unpack_tmp.ko"
+        temp = True
+        kopath = tempfile.mkstemp(suffix=".ko", dir="/tmp/")[1]
         os.system(f"xzcat {mod} > {kopath}")
+    #with open(kopath, 'rb') as fd:
+    #    elf = ELFFile(fd)
+    #    for sec in elf.iter_sections():
+    #        if not isinstance(sec, SymbolTableSection):
+    #            continue
+    #        for sym in sec.iter_symbols():
+    #            ty = None
+    #            if describe_symbol_shndx(sym['st_shndx']) == 'UND':
+    #                ty = 'U'
+    #            elif describe_symbol_type(sym['st_info']['type']) == 'FUNC':
+    #                ty = 'T'
+    #            else:
+    #                ty = 'V'
+    #            if ty in symty:
+    #                symlist.append(sym.name)
     output = subprocess.check_output(['nm', kopath])
     for line in output.decode('latin-1').strip().split('\n'):
         tup = line.strip().split()
@@ -69,6 +107,8 @@ def get_sym(mod, symty):
         ty, sym = tup
         if ty in symty:
             symlist.append(sym)
+    if temp:
+        os.system(f"rm {kopath}")
     return symlist
 
 #mod = sys.argv[1]
@@ -119,6 +159,9 @@ def get_data_deps(linux_build_path):
     return data_deps
 
 if __name__ == "__main__":
+    get_sym('ib_iser.ko', ['t', 'T'])
+    exit(0)
+    LINUX_BUILD = "./linux/build_llvm"
     data_deps = get_data_deps(LINUX_BUILD)
     for m in data_deps:
         for n in data_deps[m]:
