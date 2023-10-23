@@ -22,5 +22,6 @@ if [ "$kver" != "none" ]; then
     sleep 5
   done
 else
+  echo 'hacksaw container is ready.'
   sleep infinity
 fi

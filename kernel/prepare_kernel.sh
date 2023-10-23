@@ -14,6 +14,7 @@ OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 
 KERNEL_SRC_PATH="$SRCDIR/linux-$KERNEL_VER/"
 KERNEL_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER/"
+KERNEL_BUILD_BUILTIN_PATH="$BUILDDIR/linux-$KERNEL_VER-builtin/"
 
 KERNEL_CONF_FRAGMENT="${CURDIR}/hacksaw.kconfig.fragment"
 
@@ -28,6 +29,12 @@ fi
 pushd $KERNEL_SRC_PATH
 
 make mrproper
+make CC=clang allmodconfig O=$KERNEL_BUILD_BUILTIN_PATH
+./scripts/kconfig/merge_config.sh -O $KERNEL_BUILD_BUILTIN_PATH $KERNEL_BUILD_BUILTIN_PATH/.config $KERNEL_CONF_FRAGMENT
+make CC=clang olddefconfig O=$KERNEL_BUILD_BUILTIN_PATH
+make CC=clang -j$(nproc) vmlinux O=$KERNEL_BUILD_BUILTIN_PATH
+
+make mrproper
 make CC=clang allmodconfig O=$KERNEL_BUILD_PATH
 ./scripts/kconfig/merge_config.sh -O $KERNEL_BUILD_PATH $KERNEL_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT
 make CC=clang olddefconfig O=$KERNEL_BUILD_PATH
@@ -36,5 +43,4 @@ make -j$(nproc) CC=clang INSTALL_MOD_PATH=./mod_install modules_install O=$KERNE
 
 popd
 
-# ${CURDIR}/buildir.py $KERNEL_BUILD_PATH
 ${CURDIR}/linkir.py $KERNEL_BUILD_PATH
