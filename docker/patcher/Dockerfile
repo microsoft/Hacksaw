@@ -8,6 +8,17 @@ ENV TZ=Etc/UTC
 RUN apt update \
   && apt install -y --no-install-recommends \
   && apt install -y \
+    build-essential \
+    libncurses-dev \
+    bison \
+    flex \
+    libssl-dev \
+    libelf-dev \
+    make \
+    file \
+    bc \
+    cpio \
+    clang-15 \
     wget \
     libguestfs-tools \
   && pip install --upgrade pip \
@@ -15,6 +26,14 @@ RUN apt update \
     psutil \
     pyelftools \
     capstone
+
+RUN update-alternatives \
+  --install /usr/bin/clang clang /usr/bin/clang-15 100 \
+  --slave /usr/bin/clang++ clang++ /usr/bin/clang++-15 \
+  --slave /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-15 \
+  --slave /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-15 \
+  --slave /usr/bin/llvm-ar llvm-ar /usr/bin/llvm-ar-15 \
+  --slave /usr/bin/opt opt /usr/bin/opt-15
 
 RUN groupadd -g ${USER_ID} hacksaw
 RUN useradd -u ${USER_ID} -g ${USER_ID} -m hacksaw

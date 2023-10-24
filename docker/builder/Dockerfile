@@ -25,12 +25,21 @@ RUN apt update \
     file \
     bc \
     cpio \
+    clang-15 \
     wget \
     kmod \
   && pip install --upgrade pip \
   && pip install \
     z3-solver \
     kmax
+
+RUN update-alternatives \
+  --install /usr/bin/clang clang /usr/bin/clang-15 100 \
+  --slave /usr/bin/clang++ clang++ /usr/bin/clang++-15 \
+  --slave /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-15 \
+  --slave /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-15 \
+  --slave /usr/bin/llvm-ar llvm-ar /usr/bin/llvm-ar-15 \
+  --slave /usr/bin/opt opt /usr/bin/opt-15
 
 RUN mkdir -p ${LLVM_SRC} \
   && mkdir -p ${LLVM_BUILD} \
