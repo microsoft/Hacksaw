@@ -603,8 +603,24 @@ def repack_kernel(check_dir, workdir, patchcb=None):
     # Fixups
     if branch_ver == "v5.10":
         os.system(f"git apply {os.path.join(CURDIR, '0004-x86-entry-build-thunk_-BITS-only-if-CONFIG_PREEMPTION-y.patch')}")
-    if branch_ver.startswith("v5.1"):
-        os.system(f"git apply {os.path.join(CURDIR, '5.1x-pahole.patch')}")
+    # - Fixup Pahole(?)
+    os.system("mv scripts/link-vmlinux.sh scripts/link-vmlinux.sh_bak")
+    with open('scripts/link-vmlinux.sh_bak', 'r') as fd:
+        lkscript = fd.read()
+    with open('scripts/link-vmlinux.sh', 'w') as fd:
+        patchsig = 'vmlinux_link ${1}\n'
+        if patchsig in lkscript:
+            idx = lkscript.find(patchsig)+len(patchsig)
+            with open(os.path.join(CURDIR, 'pahole.patch'), 'r') as pfd:
+                patches = pfd.read().strip().split('>---<')
+                for pt in patches[::-1]:
+                    if pt.strip().split('\n')[0].strip() not in lkscript:
+                        lkscript = lkscript[:idx] + '\n' + pt + '\n' + lkscript[idx:]
+            idx = lkscript.find('LLVM_OBJCOPY=', idx)
+            idx = lkscript.find('-J ', idx)
+            idx += 3
+            lkscript = lkscript[:idx] + '${hacksaw_extra_paholeopt} ' + lkscript[idx:]
+        fd.write(lkscript)
     os.system(f"cp {config} ./build/.config")
     #os.system(f"sed -i 's/^#include \"cfi_regs\.h\"/#include \<arch\/cfi_regs\.h\>/' tools/objtool/cfi.h")
     #os.system(f"cp {os.path.join(cur_cwd, workdir, 'config')} ./build/.config")
@@ -621,6 +637,7 @@ def repack_kernel(check_dir, workdir, patchcb=None):
     os.system("sed -i 's/^CONFIG_MODULE_SIG_KEY.*//' ./build/.config")
     os.system("sed -i 's/^CONFIG_SYSTEM_TRUSTED_KEY.*//' ./build/.config")
     os.system("sed -i 's/^CONFIG_SYSTEM_REVOCATION_.*//' ./build/.config")
+    #os.system("sed -i 's/^CONFIG_DEBUG_INFO_BTF.*//' ./build/.config")
 
     run_host("make olddefconfig O=./build")
     run_host("cat ./build/.config.old | grep CONFIG_VERSION_SIGNATURE >> ./build/.config")
