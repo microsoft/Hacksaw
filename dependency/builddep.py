@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import sys
 import glob
 import subprocess
@@ -32,12 +33,14 @@ def get_deps(mod_dir):
         for line in data.strip().split('\n'):
             key, deps = line.split(':')
             key = norm_mod(os.path.basename(key))
+            key = re.sub('-', '_', key)
             if key.endswith(".ko"):
                 key = key[:-3]
             if deps.strip():
                 mod_dep[key] = set()
                 for d in deps.strip().split():
                     d = norm_mod(os.path.basename(d.strip()))
+                    d = re.sub('-', '_', d)
                     if d.endswith(".ko"):
                         d = d[:-3]
                     mod_dep[key].add(d)
@@ -54,6 +57,7 @@ def get_core_deps(check_dir, driver_map, busreg_apis):
             mname = norm_mod(mod)
             if mname.endswith('.ko'):
                 m = os.path.basename(mname)[:-3]
+                m = re.sub('-', '_', m)
                 if m not in checkdrv:
                     checkdrv[m] = set()
                 checkdrv[m].add(os.path.join(root, mod))
