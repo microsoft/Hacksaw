@@ -67,7 +67,15 @@ def disasm(fn, off, raw_off=False, text_rel=None):
     d = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     expected_dis = set()
     #print("DEBUG disas ", hex(off), hex(text_va), hex(text_off), hex(len(data)))
-    for insn in d.disasm(data[off:off+16], text_va):
+    insnlist = list(d.disasm(data[off:off+16], text_va))
+    # Disasm 10 instructions
+    maxinsn = 10
+    insncnt = 0
+    while insnlist:
+        if insncnt > maxinsn:
+            break
+        insncnt += 1
+        insn = insnlist[0]
         #print(insn)
         if off in expected_dis:
             expected_dis.remove(off)
@@ -83,6 +91,7 @@ def disasm(fn, off, raw_off=False, text_rel=None):
                 expected_dis.add(jmpaddr - text_va + text_off)
         if insn.mnemonic.startswith('ret') and len(expected_dis) == 0:
             break
+        insnlist = list(d.disasm(data[off:off+16], text_va))
     merged_result = {}
     prev = None
     nxt = None

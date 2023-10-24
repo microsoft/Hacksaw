@@ -1018,7 +1018,7 @@ def remove_firmware(check_dir):
 
 def replace_kernel(check_dir, newkern):
     kern = get_kernel(check_dir)
-    os.system(f"cp {newkern} {kern}")
+    os.system(f"cp {newkern} {os.path.join(check_dir, 'boot', kern)}")
 
 ## Obtain Hardware Ids
 # find /sys/devices/ -name modalias|xargs -I{} cat "{}"
