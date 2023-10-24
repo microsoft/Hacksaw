@@ -10,7 +10,6 @@ CURDIR=$(dirname $(realpath $0))
 ROOTDIR=$(dirname ${CURDIR})
 SRCDIR="$CURDIR/src"
 BUILDDIR="${ROOTDIR}/build/"
-OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 
 KERNEL_SRC_PATH="$SRCDIR/linux-$KERNEL_VER/"
 KERNEL_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER/"
@@ -20,7 +19,7 @@ KERNEL_CONF_FRAGMENT="${CURDIR}/hacksaw.kconfig.fragment"
 
 mkdir -p $SRCDIR
 mkdir -p $KERNEL_BUILD_PATH
-mkdir -p $OUTPUT_PATH
+mkdir -p $KERNEL_BUILD_BUILTIN_PATH
 
 if [ ! -d "$KERNEL_SRC_PATH" ]; then
   wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ -C $SRCDIR
