@@ -576,6 +576,10 @@ def run_kernel_cmd(cmdfile, cwd='./build'):
 def repack_kernel(check_dir, workdir, patchcb=None):
     vmlinuz = os.path.join(check_dir, "boot", get_kernel(check_dir))
     vmlinux = os.path.join(workdir, 'vmlinux.unpack')
+
+    if not os.path.exists(os.path.join(workdir, 'linux-stable')):
+        os.system(f"git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git {os.path.join(workdir, 'linux-stable')}")
+
     os.system(f"{os.path.join(workdir,'linux-stable/scripts/extract-vmlinux')} {vmlinuz} > {vmlinux}")
 
     if patchcb:
@@ -589,8 +593,6 @@ def repack_kernel(check_dir, workdir, patchcb=None):
     #print(config)
     cur_cwd = os.getcwd()
 
-    if not os.path.exists(os.path.join(workdir, 'linux-stable')):
-        os.system(f"git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git {os.path.join(workdir, 'linux-stable')}")
     os.chdir(os.path.join(workdir, 'linux-stable'))
     os.system("git checkout .")
     git_ver = subprocess.check_output(["git", "describe", "--tag"]).strip()
@@ -601,6 +603,8 @@ def repack_kernel(check_dir, workdir, patchcb=None):
     # Fixups
     if branch_ver == "v5.10":
         os.system(f"git apply {os.path.join(CURDIR, '0004-x86-entry-build-thunk_-BITS-only-if-CONFIG_PREEMPTION-y.patch')}")
+    if branch_ver.startswith("v5.1"):
+        os.system(f"git apply {os.path.join(CURDIR, '5.1x-pahole.patch')}")
     os.system(f"cp {config} ./build/.config")
     #os.system(f"sed -i 's/^#include \"cfi_regs\.h\"/#include \<arch\/cfi_regs\.h\>/' tools/objtool/cfi.h")
     #os.system(f"cp {os.path.join(cur_cwd, workdir, 'config')} ./build/.config")
@@ -691,7 +695,7 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
     cur_cwd = os.getcwd()
     os.chdir(tmprd)
 
-    os.system(f"{os.path.join(CURDIR, 'utils/unpack-initramfs.sh')} {initrd}")
+    os.system(f"{os.path.join(CURDIR, '../utils/unpack-initramfs.sh')} {initrd}")
     fspart = None
     parts = None
     for _,_,files in os.walk('./out'):
