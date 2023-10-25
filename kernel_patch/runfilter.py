@@ -127,9 +127,6 @@ if __name__ == '__main__':
     else:
         THREADS = 1
 
-    # Do NOT support Multi-Threading for patching the kernel
-    assert (testonly or THREADS == 1)
-
     hwlist = [
             os.path.join(args.dataset_path, "hwenv/aws-t2-micro.txt"),
             os.path.join(args.dataset_path, "hwenv/azure-v1.txt"),
@@ -139,9 +136,6 @@ if __name__ == '__main__':
             os.path.join(args.dataset_path, "hwenv/qemu-kvm.txt"),
             os.path.join(args.dataset_path, "hwenv/hyperv.txt"),
             ]
-    #hwlist = [
-    #        "../hwenv/aws-t2-micro.txt",
-    #        ]
     if not testonly:
         hwlist = [
                 os.path.join(args.dataset_path, "hwenv/qemu-kvm.txt"),
@@ -278,10 +272,20 @@ if __name__ == '__main__':
             os.system(f"cp '{img}' '{ctl_img}'")
             os.system(f"cp '{img}' '{patch_img}'")
 
+            # Prepare Control Image
             if os.path.basename(img) == "suse.raw":
                 os.system(f"guestmount -a {ctl_img} --rw -m /dev/sda2 --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
             else:
                 os.system(f"guestmount -a {ctl_img} --rw -i --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
+
+            hwfilter.replace_init(chkdir)
+            img_umount(chkdir)
+
+            # Prepare Testing Image
+            if os.path.basename(img) == "suse.raw":
+                os.system(f"guestmount -a {patch_img} --rw -m /dev/sda2 --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
+            else:
+                os.system(f"guestmount -a {patch_img} --rw -i --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
 
             def patchcb(vmlinux):
                 #patchlist = [x for x in bi_rm|builtin_dep if 'dm_' not in x]
@@ -301,13 +305,7 @@ if __name__ == '__main__':
                 #hwfilter.patch_initrd(chkdir, set(), ["scsi", "ata", "phy"], opensuse_fstab_patch=True)
                 #initrdstat = hwfilter.patch_initrd(chkdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi", "ata"])
                 initrdstat = (0, 0)
-            if os.path.basename(img) in [
-                    "debian-11-genericcloud-amd64-20220816-1109.raw",
-                    "debian-11-nocloud-amd64-20220816-1109.raw",
-                    ]:
-                #hwfilter.patch_initrd(chkdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi_mod", "libiscsi", "scsi_transport_iscsi", "libata", "ata_piix", "ata_generic"])
-                #initrdstat = hwfilter.patch_initrd(chkdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi", "ata"])
-                initrdstat = (0, 0)
+                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
             else:
                 initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
             hwfilter.remove_firmware(chkdir)
