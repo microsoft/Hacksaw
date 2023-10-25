@@ -36,11 +36,11 @@ fi
 
 pushd $KERNEL_SRC_PATH
 
-# make mrproper
-# make CC=clang allmodconfig O=$KERNEL_BUILD_BUILTIN_PATH
-# ./scripts/kconfig/merge_config.sh -O $KERNEL_BUILD_BUILTIN_PATH $KERNEL_BUILD_BUILTIN_PATH/.config $KERNEL_CONF_FRAGMENT
-# make CC=clang olddefconfig O=$KERNEL_BUILD_BUILTIN_PATH
-# make CC=clang -j$(nproc) vmlinux O=$KERNEL_BUILD_BUILTIN_PATH
+make mrproper
+make CC=clang allmodconfig O=$KERNEL_BUILD_BUILTIN_PATH
+./scripts/kconfig/merge_config.sh -O $KERNEL_BUILD_BUILTIN_PATH $KERNEL_BUILD_BUILTIN_PATH/.config $KERNEL_CONF_FRAGMENT
+make CC=clang olddefconfig O=$KERNEL_BUILD_BUILTIN_PATH
+make CC=clang -j$(nproc) vmlinux O=$KERNEL_BUILD_BUILTIN_PATH
 
 make mrproper
 make CC=clang allmodconfig O=$KERNEL_BUILD_PATH
@@ -51,4 +51,4 @@ make -j$(nproc) CC=clang INSTALL_MOD_PATH=./mod_install modules_install O=$KERNE
 
 popd
 
-# ${CURDIR}/linkir.py $KERNEL_BUILD_PATH
+${CURDIR}/linkir.py $KERNEL_BUILD_PATH
