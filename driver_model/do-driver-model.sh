@@ -41,7 +41,7 @@ cat $OUTPUT_PATH/classdrv.raw | awk '{ print $3 }' | sort | uniq > $OUTPUT_PATH/
 ${CURDIR}/batch-opt-pass.py -k $KERNEL_BUILD_PATH -o $DRVMOD_BUILD_PATH/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/busdrv.names -n $(nproc) | tee $OUTPUT_PATH/bus-regfuns.raw
 ${CURDIR}/batch-opt-pass.py -k $KERNEL_BUILD_PATH/ -o $DRVMOD_BUILD_PATH/$DRVDEV/libDrvDevRegPass.so -p $DRVDEV -b $OUTPUT_PATH/classdrv.names -n $(nproc) | tee $OUTPUT_PATH/class-regfuns.raw
 
-LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+\/"
+LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\(\|\.[0-9]\+\)\/"
 
 cat $OUTPUT_PATH/bus-regfuns.raw | grep -a '^bus: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/bus-regfuns.db
 cat $OUTPUT_PATH/class-regfuns.raw | grep -a '^class: ' | awk '{ print $2,$3 }' | sed "s/$LINUX_PREFIX//" | sort | uniq | $CURDIR/uniq-funcs.py | sort > $OUTPUT_PATH/class-regfuns.db

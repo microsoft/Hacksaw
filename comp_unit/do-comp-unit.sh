@@ -43,7 +43,7 @@ if [ ! -d "$KERNEL_SRC_PATH" ]; then
   wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ -C $(dirname $KERNEL_SRC_PATH)
 fi
 
-LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\.[0-9]\+-builtin\/"
+LINUX_PREFIX="^\/.*linux-[0-9]\+\.[0-9]\+\(\|\.[0-9]\+\)-builtin\/"
 find $KERNEL_BUILD_BUILTIN_PATH -name '*.o' > $OUTPUT_PATH/builtin-objs.raw
 cat $OUTPUT_PATH/builtin-objs.raw | sed "s/$LINUX_PREFIX//" | sort | uniq > $BUILTIN_OBJS
 
