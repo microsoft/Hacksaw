@@ -20,6 +20,12 @@ RUN apt update \
     cpio \
     wget \
     libguestfs-tools \
+    bzip2 \
+    gzip \
+    lzop \
+    lz4 \
+    xz-utils \
+    zstd \
   && pip install --upgrade pip \
   && pip install \
     psutil \
