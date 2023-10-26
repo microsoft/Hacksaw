@@ -501,14 +501,14 @@ def patch_builtin(vmlinux, patch_list, sym_tab):
 
     patch_range = dict()
     kern_text_off, kern_text_va = disasm.get_text_rel(vmlinux)
-    with open(vmlinux, 'rb') as fd:
-        data = list(fd.read())
-        for sym in patch_set:
-            off = patch_set[sym]
-            patch_range.update(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
+    for sym in patch_set:
+        off = patch_set[sym]
+        patch_range.update(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
     print("Patch kernel - disasm : ", time.time()-prev_time)
     prev_time = time.time()
 
+    with open(vmlinux, 'rb') as fd:
+        data = list(fd.read())
     ret_patched = False
     for poff in patch_range:
         plen = patch_range[poff]
@@ -633,15 +633,27 @@ def repack_kernel(check_dir, workdir, patchcb=None):
     #os.system("sed -i 's/CONFIG_KERNEL_LZ4=y//' ./build/.config")
     #os.system("sed -i 's/# CONFIG_KERNEL_GZIP.*/CONFIG_KERNEL_GZIP=y/' ./build/.config")
 
+    # Avoid stripping kernel to reserve bigger space for patched kernel
+    #os.system(f"sed -i 's/^OBJCOPYFLAGS_vmlinux.bin.*/OBJCOPYFLAGS_vmlinux.bin :=/' ./arch/x86/boot/compressed/Makefile")
+
     # disable module signing
     os.system("sed -i 's/^CONFIG_MODULE_SIG_KEY.*//' ./build/.config")
     os.system("sed -i 's/^CONFIG_SYSTEM_TRUSTED_KEY.*//' ./build/.config")
     os.system("sed -i 's/^CONFIG_SYSTEM_REVOCATION_.*//' ./build/.config")
     #os.system("sed -i 's/^CONFIG_DEBUG_INFO_BTF.*//' ./build/.config")
 
-    run_host("make olddefconfig O=./build")
+    # Fixup Kernel Release Version
+    lver_idx = mod_ver.find('.', mod_ver.find('.')+1)+1
+    while mod_ver[lver_idx].isdigit():
+        lver_idx += 1
+    localver = mod_ver[lver_idx:]
+    # Avoid '+' in Kernel Version string
+    os.system("sed -i 's/^CONFIG_LOCALVERSION.*//' ./build/.config")
+    os.system("sed -i 's/^CONFIG_LOCALVERSION_AUTO.*//' ./build/.config")
+
+    run_host(f"make LOCALVERSION='{localver}' olddefconfig O=./build")
     run_host("cat ./build/.config.old | grep CONFIG_VERSION_SIGNATURE >> ./build/.config")
-    run_host("make -j4 O=./build kernel bzImage")
+    run_host(f"make LOCALVERSION='{localver}' -j4 O=./build kernel bzImage modules")
 
     # repacking
     os.system(f"cat {vmlinux}|gzip -n -f -9 > build/arch/x86/boot/compressed/vmlinux.bin.gz")    # ./build/arch/x86/boot/compressed/.vmlinux.bin.gz.cmd
@@ -746,6 +758,21 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
     stat_res = calc_module_count(".", rmmods, ker_ver)
     remove_module('.', rmmods, ker_ver)
     remove_firmware('.')
+
+    # Replace Module with current build to avoid MODVERSIONS inconsistency
+    build_path = os.path.join(workdir, "linux-stable/build")
+    modpath = os.path.join('./lib/modules', ker_ver, 'kernel')
+    for root,_,files in os.walk(modpath):
+        for fn in files:
+            mod = builddep.norm_mod(fn)
+            if mod.endswith(".ko"):
+                uri = os.path.relpath(root, modpath)
+                if os.path.exists(os.path.join(build_path, uri, fn)):
+                    os.system(f"cp {os.path.join(build_path, uri, fn)} {os.path.join(root, fn)}")
+                elif os.path.exists(os.path.join(build_path, uri, mod)):
+                    ext = fn.split('.')[-1]
+                    os.system(f"{pack_helper[ext]} < {os.path.join(build_path, uri, mod)} > {os.path.join(root, fn)}")
+
     if opensuse_fstab_patch:
         with open("./etc/fstab", 'w') as fd:
             fd.write("LABEL=ROOT /sysroot xfs defaults 0 1\n")

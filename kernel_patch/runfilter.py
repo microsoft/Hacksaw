@@ -273,13 +273,13 @@ if __name__ == '__main__':
             os.system(f"cp '{img}' '{patch_img}'")
 
             # Prepare Control Image
-            if os.path.basename(img) == "suse.raw":
-                os.system(f"guestmount -a {ctl_img} --rw -m /dev/sda2 --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
-            else:
-                os.system(f"guestmount -a {ctl_img} --rw -i --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
+            #if os.path.basename(img) == "suse.raw":
+            #    os.system(f"guestmount -a {ctl_img} --rw -m /dev/sda2 --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
+            #else:
+            #    os.system(f"guestmount -a {ctl_img} --rw -i --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
 
-            hwfilter.replace_init(chkdir)
-            img_umount(chkdir)
+            #hwfilter.replace_init(chkdir)
+            #img_umount(chkdir)
 
             # Prepare Testing Image
             if os.path.basename(img) == "suse.raw":
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
             newkern = hwfilter.repack_kernel(chkdir, workdir, patchcb)
 
-            hwfilter.replace_init(chkdir)
+            #hwfilter.replace_init(chkdir)
             hwfilter.replace_kernel(chkdir, newkern)
             hwfilter.remove_module(chkdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
             hwfilter.patch_module(chkdir, fdep_ko)
@@ -303,11 +303,10 @@ if __name__ == '__main__':
                     ]:
                 #print(mod_builtin_dep)
                 #hwfilter.patch_initrd(chkdir, set(), ["scsi", "ata", "phy"], opensuse_fstab_patch=True)
-                #initrdstat = hwfilter.patch_initrd(chkdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi", "ata"])
                 initrdstat = (0, 0)
-                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
+                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi_mod", "ata", "sd_mod"])
             else:
-                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
+                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi_mod", "ata", "sd_mod"])
             hwfilter.remove_firmware(chkdir)
 
             #hwfilter.check_rop_gadgets(tag)
