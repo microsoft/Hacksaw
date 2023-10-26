@@ -12,10 +12,6 @@ import hwfilter
 sys.path.append(os.path.join(CURDIR, "..", "hwdb", "prepare_database"))
 import modinitcb
 
-#sys.path.append(os.path.join(cwd, "./kmax"))
-#import kmax
-#import kmax.alg
-
 def load_btobj_deps(linux_build, builtin_objdeplist):
     obj_build_revdeps = collections.defaultdict(set)
     with open(builtin_objdeplist, 'r') as fd:
@@ -148,24 +144,8 @@ class ObjDeps(object):
                                 continue
                             assert (os.path.exists(mk))
         
-                            #drv_map[ko].add(os.path.join(linux_build, objfile))
                             self.drv_map[os.path.join(linux_build, objfile)].add(ko)
         
-                            #kmax.settings.output_all_unit_types = True
-                            #kmaxrun = kmax.alg.Run()
-                            #kmaxrun.run([mk])
-                            #print(kmaxrun.results.units_by_type['targets'])
-                            #print(kmaxrun.results.units_by_type['clean_files'])
-                            #print(kmaxrun.results.units_by_type['compilation_units'])
-                            #print(kmaxrun.results.units_by_type['subdirs'])
-                            #print(kmaxrun.results.units_by_type['extra'])
-                            #print(kmaxrun.results.units_by_type['hostprog_units'])
-                            #print(kmaxrun.results.units_by_type['unconfigurable_units'])
-                            #print(kmaxrun.results.presence_conditions.keys())
-        
-                            #srcpath = os.path.join(linux_src, objfile)
-                            #src, obj = modinitcb.resolve_from_mk(objfile)
-
         # link function through global variables
         for mod in self.gdat_lnks:
             for func in self.gdat_lnks[mod]:
@@ -275,15 +255,6 @@ class ObjDeps(object):
             if sym.startswith("__initcall__kmod_"):
                 initcalls.add(hwfilter.initcall_sym2init(sym))
         
-        #print(len(initcalls))
-        #patch_off = collections.defaultdict(dict)
-        #for sym in initcalls:
-        #    for mod in self.export_table:
-        #        if sym in self.export_table[mod]:
-        #            #print(sym, mod, len(export_table[mod]))
-        #            patch_off[mod][sym] = self.off_map[mod][sym]
-        #            pass
-        
         indi_mod = set()
         seen = set()
         with open('linkdeps.list', 'w') as fd:
@@ -301,7 +272,6 @@ class ObjDeps(object):
         with open('nodep.list', 'w') as fd:
             for sym in initcalls:
                 if not self.export_table[self.mod_map[sym]].intersection(seen):
-                    #print(sym, mod_map[sym])
                     fd.write(f"{sym}, {self.mod_map[sym]}\n")
 
     def related(self, sym):
@@ -320,7 +290,6 @@ class ObjDeps(object):
             if mod not in self.export_table:
                 continue
             for relsym in self.export_table[mod]:
-                #print(self.frevdep_map[relsym])
                 if mod in self.drv_map:
                     assert (len(self.drv_map[mod])==1)
                     mod = list(self.drv_map[mod])[0]
@@ -328,32 +297,7 @@ class ObjDeps(object):
                     if cmod in self.drv_map:
                         cmod = list(self.drv_map[cmod])[0]
                     candid[(relsym, mod)].add((caller, cmod))
-                #print(relsym, mod)
-                #print(candid[(relsym, mod)])
         return candid
 
 if __name__ == "__main__":
-    api_lists = sys.argv[1:]
-
-    linux_build="/home/hu/workspace/hu/linux/build_llvm"
-    linux_src="/home/hu/workspace/hu/linux"
-
-    builtin_objdeplist = "/home/hu/workspace/hu/uForkLift/coredev_v2/5.19.17/builtin-z3-allmodconfig.txt"
-
-    reg_apis = set()
-    for f in api_lists:
-        with open(f, 'r') as fd:
-            data = fd.read().strip()
-            for line in data.split('\n'):
-                api = line.strip().split()[1]
-                reg_apis.add(api)
-
-    chkdeps = ObjDeps(linux_src, linux_build, builtin_objdeplist)
-    chkdeps.log = True
-
-    #chkdeps.funcdeps(reg_apis)
-
-    sysmap = os.path.join(linux_build, "System.map")
-    #chkdeps.objdeps(sysmap)
-    chkdeps.related("acpi_bus_register_driver")
-
+    sys.exit(0)
