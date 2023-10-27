@@ -11,6 +11,6 @@ ${curdir}/prepare_database/prepare_database.sh ${KERN_SRC}
 ${curdir}/platform/build/callgraph -f ${curdir}/prepare_database/allbc.list
 ${curdir}/platform/build/platformdb \
     -i ${curdir}/prepare_database/modinit.db \
-    -a ${KERN_SRC}/mod_install/lib/modules/${KERNELRELEASE}/modules.alias \
+    -a ${KERN_SRC}/build_llvm/mod_install/lib/modules/${KERNELRELEASE}/modules.alias \
     -l ${curdir}/prepare_database/allbc.list \
     -o ${OUTPUT_DIR}/hw.db

@@ -288,25 +288,29 @@ if __name__ == '__main__':
                 os.system(f"guestmount -a {patch_img} --rw -i --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
 
             def patchcb(vmlinux):
+                modver = hwfilter.get_kernel_ver(chkdir)
                 #patchlist = [x for x in bi_rm|builtin_dep if 'dm_' not in x]
-                return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, hwfilter.get_target_info(chkdir)[1])
+                return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, \
+                        os.path.join(chkdir, "boot", "System.map-"+modver))
 
-            newkern = hwfilter.repack_kernel(chkdir, workdir, patchcb)
+            replace_kern = False
+            if os.path.basename(img) in [
+                    "openSUSE-Leap-15.4.x86_64-1.0.1-GCE-Build2.85.raw",
+                    "suse.raw",
+                    ]:
+                replace_kern = True
+
+            newkern = hwfilter.repack_kernel(chkdir, workdir, patchcb, replace_kern)
 
             #hwfilter.replace_init(chkdir)
             hwfilter.replace_kernel(chkdir, newkern)
             hwfilter.remove_module(chkdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
             hwfilter.patch_module(chkdir, fdep_ko)
-            if os.path.basename(img) in [
-                    "openSUSE-Leap-15.4.x86_64-1.0.1-GCE-Build2.85.raw",
-                    "suse.raw",
-                    ]:
-                #print(mod_builtin_dep)
-                #hwfilter.patch_initrd(chkdir, set(), ["scsi", "ata", "phy"], opensuse_fstab_patch=True)
-                initrdstat = (0, 0)
-                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi_mod", "ata", "sd_mod"])
-            else:
-                initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep, ["scsi_mod", "ata", "sd_mod"])
+
+            #print(mod_builtin_dep)
+            #hwfilter.patch_initrd(chkdir, set(), ["scsi_mod", "ata", "sd_mod"], opensuse_fstab_patch=True)
+            initrdstat = (0, 0)
+            initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
             hwfilter.remove_firmware(chkdir)
 
             #hwfilter.check_rop_gadgets(tag)

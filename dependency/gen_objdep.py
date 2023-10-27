@@ -66,7 +66,7 @@ class ObjDeps(object):
         for root,_,fs in os.walk(linux_build):
             for f in fs:
                 f = os.path.join(root, f)
-                mod = f[:-7]
+                mod = re.sub('-', '_', f[:-7])
                 if f.endswith(".o.symtab"):
                     with open(f, 'r') as fd:
                         data = fd.read()

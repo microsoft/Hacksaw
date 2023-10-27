@@ -87,7 +87,7 @@ def get_target_info(check_dir):
         for fn in files:
             m = builddep.norm_mod(fn)
             if m.endswith(".ko"):
-                m = m[:-3]
+                m = re.sub('-', '_', m[:-3])
                 mod_list.add((m, os.path.join(root[len(mod_dir):], fn)))
 
     symtab = []
@@ -254,6 +254,15 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         print("Build Mod rm_list: ", time.time()-prev)
         prev = time.time()
 
+    mod_keeps_update = set()
+    for m in mod_keeps:
+        if m not in mod_dep:
+            continue
+        for dm in mod_dep[m]:
+            if dm in alldiskmods:
+                mod_keeps_update.add(dm)
+    mod_keeps.update(mod_keeps_update)
+
     #exit(0)
 
     ## Builtin Modules
@@ -383,7 +392,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     if log:
         print("Build NoEntry Deps rm_list: ", time.time()-prev)
         prev = time.time()
-    cur_removed_mods = set([os.path.basename(x).split('.')[0] for x in dep_remove]) | new_new_mod_remove
+    cur_removed_mods = set([re.sub('-', '_', os.path.basename(x).split('.')[0]) for x in dep_remove]) | new_new_mod_remove
 
     # Core Module Discovery & Removal
     core_mod_remove = set()
@@ -402,13 +411,15 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     for core in coredepmap:
         if core not in alldiskmods:
             continue
+        if core in mod_keeps:
+            continue
         if coredepmap[core] and coredepmap[core].intersection(alldiskmods).issubset(cur_removed_mods):
             #assert (coredepmap[core].intersection(alldiskmods))
             if core in cur_removed_mods:
                 continue
             core_mod_remove.add(core)
             if core in sub_rev_dep:
-                core_mod_dep_remove.update([x for x in sub_rev_dep[core] if x in alldiskmods and x not in cur_removed_mods])
+                core_mod_dep_remove.update([x for x in sub_rev_dep[core] if x in alldiskmods and x not in cur_removed_mods and x not in mod_keeps])
 
     if log:
         print("Build Core Module Deps rm_list: ", time.time()-prev)
@@ -445,7 +456,10 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
             #if relf == f:
             #    continue
             # check caller
-            rmflag = True
+            nonexistcnt = 0
+            rmflag = len(fdeps[(relf, relmod)]) > 0
+            if not rmflag:
+                continue
             for cf, cmod in fdeps[(relf, relmod)]:
                 if cmod.endswith(".o"):
                     if relmod == cmod or cf in (patch_sym|rmfunc_fdep):
@@ -453,12 +467,18 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                     else:
                         rmflag = False
                         break
-                mod = os.path.basename(cmod).split('.')[0]
+                mod = re.sub('-', '_', os.path.basename(cmod).split('.')[0])
                 if mod not in new_mod_exists and mod not in builtin_mod_exists:
+                    nonexistcnt += 1
                     continue
-                rmflag = rmflag and ((mod in cur_removed_mods) or (mod in new_builtin_mod_remove))
+                if mod in mod_keeps:
+                    rmflag = False
+                    break
+                if mod not in cur_removed_mods and mod not in new_builtin_mod_remove:
+                    rmflag = False
+                    break
 
-            if not rmflag:
+            if not rmflag or nonexistcnt == len(fdeps[(relf, relmod)]):
                 continue
             if relmod.endswith(".o"):
                 if relf not in sym_map:
@@ -480,10 +500,16 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     #exit(0)
 
 
-def patch_builtin(vmlinux, patch_list, sym_tab):
+def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None):
+    symtab = []
+    with open(sym_tab, 'r') as fd:
+        data = fd.read().strip()
+        for line in data.split('\n'):
+            addr, ty, sym = line.split()
+            symtab.append((int(addr,16), ty, sym))
     # load sym_map
     sym_map = dict()
-    for addr,_,sym in sym_tab:
+    for addr,_,sym in symtab:
         sym_map[sym] = addr
 
     patch_set = dict()
@@ -493,6 +519,8 @@ def patch_builtin(vmlinux, patch_list, sym_tab):
             osym = initcall_sym2init(sym)
         else:
             osym = sym
+            if filter_key and True in [t in sym for t in filter_key]:
+                continue
         if osym not in sym_map:
             continue
         patch_set[osym] = sym_map[osym] - sym_map['_text']
@@ -573,7 +601,7 @@ def run_kernel_cmd(cmdfile, cwd='./build'):
                 continue
             run_host(line.split(':=')[1].strip(), cwd=cwd)
 
-def repack_kernel(check_dir, workdir, patchcb=None):
+def repack_kernel(check_dir, workdir, patchcb=None, replace_kern=False):
     vmlinuz = os.path.join(check_dir, "boot", get_kernel(check_dir))
     vmlinux = os.path.join(workdir, 'vmlinux.unpack')
 
@@ -581,9 +609,6 @@ def repack_kernel(check_dir, workdir, patchcb=None):
         os.system(f"git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git {os.path.join(workdir, 'linux-stable')}")
 
     os.system(f"{os.path.join(workdir,'linux-stable/scripts/extract-vmlinux')} {vmlinuz} > {vmlinux}")
-
-    if patchcb:
-        vmlinux = patchcb(vmlinux)
 
     mod_ver = get_kernel_ver(check_dir)
     #print(mod_ver)
@@ -654,6 +679,13 @@ def repack_kernel(check_dir, workdir, patchcb=None):
     run_host(f"make LOCALVERSION='{localver}' olddefconfig O=./build")
     run_host("cat ./build/.config.old | grep CONFIG_VERSION_SIGNATURE >> ./build/.config")
     run_host(f"make LOCALVERSION='{localver}' -j4 O=./build kernel bzImage modules")
+
+    if replace_kern:
+        os.system(f"cp ./build/System.map {os.path.join(check_dir, 'boot', 'System.map-'+mod_ver)}")
+        os.system(f"cat ./build/arch/x86/boot/compressed/vmlinux.bin ./build/arch/x86/boot/compressed/vmlinux.relocs > {vmlinux}")
+
+    if patchcb:
+        vmlinux = patchcb(vmlinux)
 
     # repacking
     os.system(f"cat {vmlinux}|gzip -n -f -9 > build/arch/x86/boot/compressed/vmlinux.bin.gz")    # ./build/arch/x86/boot/compressed/.vmlinux.bin.gz.cmd
