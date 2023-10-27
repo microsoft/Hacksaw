@@ -678,7 +678,7 @@ def repack_kernel(check_dir, workdir, patchcb=None, replace_kern=False):
 
     run_host(f"make LOCALVERSION='{localver}' olddefconfig O=./build")
     run_host("cat ./build/.config.old | grep CONFIG_VERSION_SIGNATURE >> ./build/.config")
-    run_host(f"make LOCALVERSION='{localver}' -j4 O=./build kernel bzImage modules")
+    run_host(f"make LOCALVERSION='{localver}' -j{len(os.sched_getaffinity(0))} O=./build kernel bzImage modules")
 
     if replace_kern:
         os.system(f"cp ./build/System.map {os.path.join(check_dir, 'boot', 'System.map-'+mod_ver)}")
@@ -772,9 +772,8 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
                 assert (f.endswith(".cpio"))
                 idx = int(f[:-5].split('-')[-1])-1
             parts[idx] = f
-            if ext in unpack_helper:
+            if ext in unpack_helper and not fspart:
                 fspart = f
-                break
     if not fspart:
         fspart = parts[-1]
     unpackdir = "unpack"
@@ -782,7 +781,7 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
         shutil.rmtree(unpackdir)
     os.mkdir(unpackdir)
     os.chdir(unpackdir)
-    os.system(f"({unpack_helper[f.split('.')[-1]]} | cpio -id) < {os.path.join('../out', fspart)}")
+    os.system(f"({unpack_helper[fspart.split('.')[-1]]} | cpio -id) < {os.path.join('../out', fspart)}")
     #os.chdir(tmprd)
     #print([m for m in rmmods if "iscsi" in m])
     if filter_key:
@@ -810,7 +809,7 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
             fd.write("LABEL=ROOT /sysroot xfs defaults 0 1\n")
             fd.write("LABEL=EFI /boot/efi vfat defaults 0 0\n")
     #os.chdir(unpackdir)
-    os.system(f"find .|cpio -o -H newc|{pack_helper[f.split('.')[-1]]} > ../newrd.img")
+    os.system(f"find .|cpio -o -H newc|{pack_helper[fspart.split('.')[-1]]} > ../newrd.img")
     os.chdir("..")
     data = b""
     for p in parts:
