@@ -184,6 +184,76 @@ def cache_dump(obj, p):
     with open(p, 'wb') as fd:
         pickle.dump(obj, fd)
 
+def check_rmf(f, mod, patched, fdeps, odeps, processed, \
+        relmod_bypass_filter, relmod_filter, func_check):
+    if f in processed:
+        return (f in patched, {f} if (f in patched and ((not func_check) or func_check(f))) else {})
+    processed.add(f)
+
+    #for caller, cmod in odeps.frevdep_map[f]:
+    newpatched = set()
+    bypasscnt = 0
+    rmflag = (f, mod) in fdeps and len(fdeps[(f, mod)]) > 0
+    if not rmflag:
+        return (False, {})
+    for cf, cmod in fdeps[(f, mod)]:
+        if cmod.endswith(".o"):
+            #if mod == cmod or cf in patched:
+            if mod == cmod:
+                if (cf, cmod) not in fdeps:
+                    bypasscnt += 1
+                    continue
+            if cf in patched:
+                continue
+            else:
+                flag, rmset = check_rmf(cf, cmod, patched|newpatched, fdeps, odeps, processed, \
+                        relmod_bypass_filter, relmod_filter, func_check)
+                rmflag = rmflag and flag
+                newpatched.update(rmset)
+        else:
+            # .ko
+            m = re.sub('-', '_', os.path.basename(cmod).split('.')[0])
+            if relmod_bypass_filter and relmod_bypass_filter(m):
+                bypasscnt += 1
+                continue
+            if relmod_filter and relmod_filter(m):
+                rmflag = False
+                break
+    return (rmflag and bypasscnt != len(fdeps[(f, mod)]), newpatched)
+
+def check_fdep(fdep_checklist, patch_sym, odeps, \
+        relmod_bypass_filter=None, relmod_filter=None, func_check=None, mod_check=None):
+    rmfunc_fdep = set()
+    rmko_fdep = set()
+
+    processed = set()
+    for f in fdep_checklist:
+        fdeps = odeps.related(f)
+        if not fdeps:
+            continue
+        for relf, relmod in fdeps:
+            #if relf == f:
+            #    continue
+            # check caller
+            rmflag, rmset = check_rmf(relf, relmod, patch_sym|rmfunc_fdep, fdeps, odeps, processed, \
+                    relmod_bypass_filter, relmod_filter, func_check)
+            rmfunc_fdep.update(rmset)
+
+            if not rmflag:
+                continue
+            if relmod.endswith(".o"):
+                if func_check and func_check(relf):
+                    continue
+                if relf not in patch_sym:
+                    rmfunc_fdep.add(relf)
+            else:
+                assert relmod.endswith(".ko")
+                if mod_check and mod_check(relmod):
+                    continue
+                if relf not in patch_sym:
+                    rmko_fdep.add((relf, relmod))
+    return (rmfunc_fdep, rmko_fdep)
+
 def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, cache="/tmp/.cache/forklift", log=False, tag=""):
     if not os.path.exists(cache):
         os.makedirs(cache, exist_ok=True)
@@ -214,6 +284,9 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         prev = time.time()
 
     allmod, symtab = get_target_info(check_dir)
+
+    # non-function symbols
+    nonfunc_syms = set([t[2] for t in symtab if t[1] not in ['t', 'T']])
 
     # All Mods on disk img
     alldiskmods = set([t[0] for t in allmod])
@@ -448,49 +521,26 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         if os.path.exists(m):
             fdep_checklist.update(checkmodsym.get_sym(m, ['U', 'u']))
 
-    for f in fdep_checklist:
-        fdeps = odeps.related(f)
-        if not fdeps:
-            continue
-        for relf, relmod in fdeps:
-            #if relf == f:
-            #    continue
-            # check caller
-            nonexistcnt = 0
-            rmflag = len(fdeps[(relf, relmod)]) > 0
-            if not rmflag:
-                continue
-            for cf, cmod in fdeps[(relf, relmod)]:
-                if cmod.endswith(".o"):
-                    if relmod == cmod or cf in (patch_sym|rmfunc_fdep):
-                        continue
-                    else:
-                        rmflag = False
-                        break
-                mod = re.sub('-', '_', os.path.basename(cmod).split('.')[0])
-                if mod not in new_mod_exists and mod not in builtin_mod_exists:
-                    nonexistcnt += 1
-                    continue
-                if mod in mod_keeps:
-                    rmflag = False
-                    break
-                if mod not in cur_removed_mods and mod not in new_builtin_mod_remove:
-                    rmflag = False
-                    break
+    def relmod_bypass_filter(mod):
+        return mod not in new_mod_exists and mod not in builtin_mod_exists
+    def relmod_filter(mod):
+        if mod in mod_keeps:
+            return True
+        if mod not in cur_removed_mods and mod not in new_builtin_mod_remove:
+            return True
+        return False
+    def func_check(func):
+        return func not in sym_map or func in nonfunc_syms
+    def mod_check(mod):
+        return os.path.basename(mod).split('.')[0] not in diskmodmaps or \
+                os.path.basename(mod).split('.')[0] in cur_removed_mods
 
-            if not rmflag or nonexistcnt == len(fdeps[(relf, relmod)]):
-                continue
-            if relmod.endswith(".o"):
-                if relf not in sym_map:
-                    continue
-                if relf not in patch_sym:
-                    rmfunc_fdep.add(relf)
-            else:
-                assert relmod.endswith(".ko")
-                if os.path.basename(relmod).split('.')[0] not in diskmodmaps:
-                    continue
-                if relf not in patch_sym and os.path.basename(relmod).split('.')[0] not in cur_removed_mods:
-                    rmko_fdep.add((relf, relmod))
+    rmfunc_fdep, rmko_fdep = check_fdep(fdep_checklist, patch_sym, odeps, \
+            relmod_bypass_filter, relmod_filter, func_check, mod_check)
+
+    for relf, relmod in rmko_fdep:
+        if relmod in builtin_mod_exists:
+            rmfunc_fdep.add(relf)
 
     #with open("depfunc_rm.txt", 'w') as fd:
     #    for f in rmfunc_fdep:
@@ -500,7 +550,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     #exit(0)
 
 
-def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None):
+def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None, extra=[]):
     symtab = []
     with open(sym_tab, 'r') as fd:
         data = fd.read().strip()
@@ -513,8 +563,7 @@ def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None):
         sym_map[sym] = addr
 
     patch_set = dict()
-    for sym in patch_list:
-        #print(sym)
+    for sym in patch_list|set(extra):
         if sym.startswith("__initcall_"):
             osym = initcall_sym2init(sym)
         else:
@@ -527,37 +576,38 @@ def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None):
 
     prev_time = time.time()
 
-    patch_range = dict()
+    patch_ranges = []
     kern_text_off, kern_text_va = disasm.get_text_rel(vmlinux)
     for sym in patch_set:
         off = patch_set[sym]
-        patch_range.update(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
+        patch_ranges.append(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
     print("Patch kernel - disasm : ", time.time()-prev_time)
     prev_time = time.time()
 
     with open(vmlinux, 'rb') as fd:
         data = list(fd.read())
-    ret_patched = False
-    for poff in patch_range:
-        plen = patch_range[poff]
-        if not ret_patched:
-            # Skip Ftrace Stub
-            if data[poff] == 0xe8:
-                poff += 5
-                plen -= 5
-            if plen > 0:
-                data[poff] = 0xc3
-                for pi in range(1, plen, 1):
-                    data[poff+pi] = 0x90
-                #data = data[:poff] + b'\xc3' + b'\x90'*(plen-1) + data[poff+plen:]
-                ret_patched = True
+    for patch_range in patch_ranges:
+        ret_patched = False
+        for poff in patch_range:
+            plen = patch_range[poff]
+            if not ret_patched:
+                # Skip Ftrace Stub
+                if data[poff] == 0xe8:
+                    poff += 5
+                    plen -= 5
+                if plen > 0:
+                    data[poff] = 0xc3
+                    for pi in range(1, plen, 1):
+                        data[poff+pi] = 0x90
+                    #data = data[:poff] + b'\xc3' + b'\x90'*(plen-1) + data[poff+plen:]
+                    ret_patched = True
+                else:
+                    pass    # try next time
             else:
-                pass    # try next time
-        else:
-            for pi in range(plen):
-                data[poff+pi] = 0x90
-            #data = data[:poff] + b'\x90'*plen + data[poff+plen:]
-    assert (ret_patched)
+                for pi in range(plen):
+                    data[poff+pi] = 0x90
+                #data = data[:poff] + b'\x90'*plen + data[poff+plen:]
+        assert (ret_patched)
     with open(vmlinux+'.patched', 'wb') as outfd:
         outfd.write(bytes(data))
 
@@ -1092,3 +1142,5 @@ if __name__ == '__main__':
     _,_,_,patch_list,*_ = check_drivers(hwconf, devdb_path, check_dir)
     rmmod,symtab = get_target_info(check_dir)
     patch_builtin(patch_list, symtab)
+
+    print(patch_builtin("/home/hu/Hacksaw/out/repack/vmlinux.unpack", set(), "/home/hu/Hacksaw/xxx/boot/System.map-5.15.0-1011-aws", extra=["check_bugs"]))
