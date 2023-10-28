@@ -438,8 +438,21 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     return (new_mod_exists, mod_remove, mod_unknown, patch_list, allmod, allbuiltin, skip_list.union(patch_list), new_mod_remove.difference(mod_remove), new_patch_list.difference(patch_list), new_new_mod_remove.difference(new_mod_remove), set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove), core_mod_remove, core_mod_dep_remove, rmfunc_fdep, rmko_fdep, allkernfunc, builtin_mod_exists, new_builtin_mod_remove)
 
 
-def patch_builtin(vmlinux, patch_list, sym_tab):
+def patch_kernel(img_mounted, patch_list):
+    if not os.path.exists('extract-vmlinux'):
+        os.system('wget https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-vmlinux')
+        os.system('chmod a+x ./extract-vmlinux')
+
+    # find and decompress vmlinuz
+    mod_ver = get_kernel_ver(img_mounted)
+    config = os.path.join(img_mounted, "boot", "config-"+mod_ver)
+    vmlinuz = os.path.join(img_mounted, "boot", get_kernel(img_mounted))
+    _, vmlinux = tempfile.mkstemp()
+    with open(vmlinux, 'w') as f:
+        subprocess.call(["./extract-vmlinux", vmlinuz], stdout=f)
+
     # load sym_map
+    sym_tab = get_target_info(img_mounted)[1]
     sym_map = dict()
     for addr,_,sym in sym_tab:
         sym_map[sym] = addr
@@ -459,16 +472,14 @@ def patch_builtin(vmlinux, patch_list, sym_tab):
 
     patch_range = dict()
     kern_text_off, kern_text_va = disasm.get_text_rel(vmlinux)
+    for sym in patch_set:
+        off = patch_set[sym]
+        patch_range.update(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
     with open(vmlinux, 'rb') as fd:
         data = list(fd.read())
-        for sym in patch_set:
-            off = patch_set[sym]
-            patch_range.update(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
-    print("Patch kernel - disasm : ", time.time()-prev_time)
-    prev_time = time.time()
 
-    ret_patched = False
     for poff in patch_range:
+        ret_patched = False
         plen = patch_range[poff]
         if not ret_patched:
             # Skip Ftrace Stub
@@ -489,24 +500,9 @@ def patch_builtin(vmlinux, patch_list, sym_tab):
     with open(vmlinux+'.patched', 'wb') as outfd:
         outfd.write(bytes(data))
 
-    print("Patch kernel: ", time.time()-prev_time)
     return vmlinux+'.patched'
 
-def run_host(cmd, cwd=None, docker=False):
-    if docker:
-        workdir = "/data"
-        if cwd:
-            workdir = os.path.join(workdir, cwd)
-        os.system(f'docker run --rm -it -v $PWD:/data -w {workdir} -u $(id -u $USER):$(id -g $USER) kernelbuild bash -c "{cmd}"')
-    else:
-        if cwd:
-            cur_cwd = os.getcwd()
-            os.chdir(cwd)
-        os.system(cmd)
-        if cwd:
-            os.chdir(cur_cwd)
-
-def run_kernel_cmd(cmdfile, cwd='./build'):
+def run_kernel_cmd(cmdfile, cwd):
     cmdfile = os.path.join(cwd, cmdfile)
     print("DEBUG run_kernel_cmd ", cmdfile)
     with open(cmdfile, 'r') as fd:
@@ -515,107 +511,10 @@ def run_kernel_cmd(cmdfile, cwd='./build'):
             line = line.strip()
             if not line.startswith("cmd_"):
                 continue
-            run_host(line.split(':=')[1].strip(), cwd=cwd)
-
-def repack_kernel(img_mounted, linux_build, patchcb=None):
-    vmlinuz = os.path.join(img_mounted, "boot", get_kernel(img_mounted))
-    vmlinux = os.path.join('/tmp', 'vmlinux.unpack')
-
-    mod_ver = get_kernel_ver(img_mounted)
-    mod_ver_min = mod_ver.split('-')[0]
-    if mod_ver_min[-2:] == '.0':
-        mod_ver_min = mod_ver_min[:-2]
-    config = os.path.join(img_mounted, "boot", "config-"+mod_ver)
-
-    os.system(f"{CURDIR}/../kernel/prepare_bzimage.sh {mod_ver_min} {config}")
-    os.system(f"{CURDIR}/../kernel/src/linux-{mod_ver_min}/scripts/extract-vmlinux {vmlinuz} > {vmlinux}")
-
-    return
-
-    if patchcb:
-        vmlinux = patchcb(vmlinux)
-
-    cur_cwd = os.getcwd()
-
-    os.chdir(os.path.join(workdir, 'linux-stable'))
-    os.system("git checkout .")
-    git_ver = subprocess.check_output(["git", "describe", "--tag"]).strip()
-    if git_ver.decode('latin-1') != branch_ver:
-        os.system("rm -rf build")
-    os.system("mkdir -p build")
-    os.system(f"git checkout {branch_ver}")
-    # Fixups
-    if branch_ver == "v5.10":
-        os.system(f"git apply {os.path.join(CURDIR, '0004-x86-entry-build-thunk_-BITS-only-if-CONFIG_PREEMPTION-y.patch')}")
-    # - Fixup Pahole(?)
-    os.system("mv scripts/link-vmlinux.sh scripts/link-vmlinux.sh_bak")
-    with open('scripts/link-vmlinux.sh_bak', 'r') as fd:
-        lkscript = fd.read()
-    with open('scripts/link-vmlinux.sh', 'w') as fd:
-        patchsig = 'vmlinux_link ${1}\n'
-        if patchsig in lkscript:
-            idx = lkscript.find(patchsig)+len(patchsig)
-            with open(os.path.join(CURDIR, 'pahole.patch'), 'r') as pfd:
-                patches = pfd.read().strip().split('>---<')
-                for pt in patches[::-1]:
-                    if pt.strip().split('\n')[0].strip() not in lkscript:
-                        lkscript = lkscript[:idx] + '\n' + pt + '\n' + lkscript[idx:]
-            idx = lkscript.find('LLVM_OBJCOPY=', idx)
-            idx = lkscript.find('-J ', idx)
-            idx += 3
-            lkscript = lkscript[:idx] + '${hacksaw_extra_paholeopt} ' + lkscript[idx:]
-        fd.write(lkscript)
-    os.system(f"cp {config} ./build/.config")
-
-    # disable module signing
-    os.system("sed -i 's/^CONFIG_MODULE_SIG_KEY.*//' ./build/.config")
-    os.system("sed -i 's/^CONFIG_SYSTEM_TRUSTED_KEY.*//' ./build/.config")
-    os.system("sed -i 's/^CONFIG_SYSTEM_REVOCATION_.*//' ./build/.config")
-    #os.system("sed -i 's/^CONFIG_DEBUG_INFO_BTF.*//' ./build/.config")
-
-    run_host("make olddefconfig O=./build")
-    run_host("cat ./build/.config.old | grep CONFIG_VERSION_SIGNATURE >> ./build/.config")
-    run_host("make -j4 O=./build kernel bzImage")
-
-    # repacking
-    os.system(f"cat {vmlinux}|gzip -n -f -9 > build/arch/x86/boot/compressed/vmlinux.bin.gz")    # ./build/arch/x86/boot/compressed/.vmlinux.bin.gz.cmd
-    run_kernel_cmd("./arch/x86/boot/compressed/.piggy.S.cmd")
-    run_kernel_cmd("./arch/x86/boot/compressed/.piggy.o.cmd")
-    run_kernel_cmd("./arch/x86/boot/compressed/.vmlinux.cmd")
-    run_kernel_cmd("./arch/x86/boot/.vmlinux.bin.cmd")
-    run_kernel_cmd("./arch/x86/boot/.header.o.cmd")
-    run_kernel_cmd("./arch/x86/boot/.setup.elf.cmd")
-    run_kernel_cmd("./arch/x86/boot/.setup.bin.cmd")
-    run_kernel_cmd("./arch/x86/boot/.bzImage.cmd")
-
-    os.chdir(cur_cwd)
-
-    os.system(f"cp {os.path.join(workdir, 'linux-stable/build/arch/x86/boot/bzImage')} {os.path.join(workdir, 'bzImage')}")
-    return os.path.join(workdir, 'bzImage')
-
-def patch_rootinit(check_dir, newinit):
-    workdir = "./repack"
-    init = os.path.join(check_dir, "sbin/init")
-    if not os.path.exists(init):
-        init = os.path.join(check_dir, "etc/init")
-        if not os.path.exists(init):
-            init = os.path.join(check_dir, "bin/init")
-            assert (os.path.exists(init))
-
-    root_init = os.path.join(check_dir, "init")
-    if os.path.exists(root_init):
-        init = root_init
-    else:
-        os.system(f"echo 'exec {os.path.relpath(init, check_dir)}' > {root_init}")
-        os.system(f"chmod 777 {root_init}")
-
-    init_dir = os.path.dirname(init)
-    staged_init = os.path.join(init_dir, "staged_init")
-
-    os.system(f"mv {init} {staged_init}")
-    os.system(f"cp {newinit} {init}")
-    os.system(f"chmod 777 {init}")
-
+            cur_cwd = os.getcwd()
+            os.chdir(cwd)
+            os.system(line.split(':=')[1].strip())
+            os.chdir(cur_cwd)
 
 unpack_helper = {
         "zst" : "zstdcat",
@@ -638,9 +537,7 @@ pack_helper = {
 def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
     initrd = get_initrd(check_dir)
     ker_ver = get_kernel_ver(check_dir)
-    tmprd = os.path.join("/tmp", initrd, "ramfs")
-    if os.path.exists(tmprd):
-        os.system(f"sudo rm -rf {tmprd}")
+    tmprd = tempfile.mkdtemp(prefix='ramfs_')
     os.system(f"mkdir -p {tmprd}")
     cur_cwd = os.getcwd()
     os.chdir(tmprd)
@@ -676,7 +573,6 @@ def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
         rmmods = [m for m in rmmods if True not in [fk in m for fk in filter_key]]
     stat_res = calc_module_count(".", rmmods, ker_ver)
     remove_module('.', rmmods, ker_ver)
-    remove_firmware('.')
     if opensuse_fstab_patch:
         with open("./etc/fstab", 'w') as fd:
             fd.write("LABEL=ROOT /sysroot xfs defaults 0 1\n")
@@ -697,102 +593,6 @@ def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
     os.chdir(cur_cwd)
 
     return stat_res
-
-def patch_gdb_builtin(patch_list, sym_tab):
-    # load sym_map
-    sym_map = dict()
-    for addr,_,sym in sym_tab:
-        sym_map[sym] = addr
-
-    # Patching
-    import subprocess
-    import signal
-
-    def dbgsendline(p, cmd):
-        p.stdin.write(cmd+b'\n')
-        p.stdin.flush()
-
-    def dbgread(p):
-        out = []
-        banner = dbg.stdout.read(6)
-        while banner != b'(gdb) ':
-            line = dbg.stdout.readline()
-            out.append(banner+line)
-            print(banner+line)
-            banner = dbg.stdout.read(6)
-        return out
-
-    ## builtin patch
-    #qemu = subprocess.Popen(['./runguest.sh'], stdout=subprocess.DEVNULL)
-    qemu_cmd = ['./qemu/build/qemu-system-x86_64',
-            '-m', '2048', '-kernel', './vmlinuz', '-initrd', './initrd.img',
-            '-append', '"console=ttyS0 nokaslr"',
-            '-display', 'none', '-serial', 'stdio', '-monitor', 'none',
-            '-s', '-S']
-    #qemu = subprocess.Popen(qemu_cmd)
-    dbg = subprocess.Popen(['gdb', '-q'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-    dbgsendline(dbg, b'target remote :1234')
-    dbgread(dbg)
-    dbgsendline(dbg, b'c')
-    time.sleep(2)   # NOTE: Timing is critical here. Some initcalls might be overwritten during bootstrap
-    dbgread(dbg)
-    dbg.send_signal(signal.SIGINT)
-    dbgread(dbg)
-
-    patch_set = dict()
-    diff = set(patch_list)
-    for sym in diff:
-        print(sym)
-        newsym = re.sub(r"__[0-9]+_[0-9]+_", '____', sym)
-        osym = newsym.split('____')[1]
-        if osym[-1].isnumeric():
-            osym = osym[:-1]
-        if osym[-2].isnumeric() and osym[-1] == 's':
-            osym = osym[:-2]
-        if osym.endswith("early"):
-            osym = osym[:-5]
-        if osym.endswith("rootfs"):
-            osym = osym[:-6]
-        print(hex(sym_map[osym]), osym)
-
-        # Dump & Generate Signature
-        dbgsendline(dbg, b'x/15xb ' + f'{hex(sym_map[osym])}'.encode('latin-1'))
-        output = dbgread(dbg)
-        addr = output[0].split()[0]
-        sig = output[0].strip().split()[1:] + output[1].strip().split()[1:]
-        print(addr, sig)
-        sig = sig[5:]   # Ignore 5 bytes FTrace Stub
-        print(sig)
-        offset = int(addr[:-1], 16) & 0xffff    # Use 16 bits offset
-        print(hex(offset))
-        patch_set[osym] = (offset, b''.join([chr(int(x,16)).encode('latin-1') for x in sig]))
-
-        dbgsendline(dbg, b'x/10i ' + f'{hex(sym_map[osym])}'.encode('latin-1'))
-        dbgread(dbg)
-
-    #qemu.terminate()
-    #qemu.wait()
-
-    # Match & Patch the Unpacked vmlinux kernel
-    with open('./vmlinux.unpack', 'rb') as fd:
-        data = fd.read()
-        for sym in patch_set:
-            off, sig = patch_set[sym]
-            print(sym, [hex(c) for c in sig], sig)
-            #print(len(re.findall(sig, data)))
-            search = data.find(sig)
-            print(hex(search), hex(off))
-            while search != -1:
-                if off+5 == (search&0xffff):
-                    print("patch: ", sym, f" ({hex(search)}), {hex(sym_map[sym])}, {hex(sym_map[sym]+5-search)}")
-                    print(hex(sym_map[sym] - sym_map['_text'] + 0x400000))
-                    data = data[:search] + b'\xc3' + data[search+1:]
-                search = data.find(sig, search+len(sig))
-
-        with open('new_vmlinux', 'wb') as outfd:
-            outfd.write(data)
-    #exit(0)
 
 def patch_module (check_dir, patch_list, mod_ver=None):
     # reorganize patch list
@@ -888,7 +688,7 @@ def remove_module(check_dir, rmmods, mod_ver=None):
             m = mod.split('.')[0]
             if m in rmmods or re.sub('-', '_', m) in rmmods:
                 drv_path = os.path.join(root, mod)
-                print('rm -rf', drv_path)
+                os.rename(drv_path, drv_path + '.hacksawed')
 #                os.unlink(drv_path)
 
 def calc_module_size(check_dir, rmmods, mod_ver=None):
@@ -921,10 +721,6 @@ def calc_module_count(check_dir, rmmods, mod_ver=None):
             if m in rmmods or re.sub('-', '_', m) in rmmods:
                 rm_cnt += 1
     return (rm_cnt, total_cnt)
-
-def remove_firmware(check_dir):
-    # TODO: use modinfo
-    return
 
 def replace_kernel(check_dir, newkern):
     kern = get_kernel(check_dir)

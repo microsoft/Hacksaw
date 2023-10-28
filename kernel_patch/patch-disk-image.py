@@ -28,20 +28,7 @@ def parse_arguments(cli_args = None):
                         help='directory to find dependency DBs')
     parser.add_argument('-o', '--output-path', action='store', required=True,
                         help='output path')
-    parser.add_argument('-n', '--num-workers', action='store',
-                        help='number of worker threads')
     return parser.parse_args(args=cli_args)
-
-def mount_image(diskimg):
-    mntpoint = "/tmp/" + os.path.basename(diskimg)
-    os.system(f"mkdir -p {mntpoint}")
-
-    if os.path.basename(diskimg) == "suse.raw":
-        os.system(f"guestmount -a {diskimg} --ro -m /dev/sda2 --pid-file {os.path.basename(mntpoint)}.pid {mntpoint}")
-    else:
-        os.system(f"guestmount -a {diskimg} --ro -i --pid-file {os.path.basename(mntpoint)}.pid {mntpoint}")
-
-    return mntpoint
 
 def unmount_image(img_mounted):
     try:
@@ -56,6 +43,21 @@ def unmount_image(img_mounted):
     except subprocess.CalledProcessError:
         return False
     return True
+
+
+def mount_image(diskimg):
+    mntpoint = "/tmp/" + os.path.basename(diskimg)
+    os.system(f"mkdir -p {mntpoint}")
+    unmount_image(mntpoint)
+
+    print(f"mounting {diskimg}")
+
+    if os.path.basename(diskimg) == "suse.raw":
+        os.system(f"guestmount -a {diskimg} --rw -m /dev/sda2 --pid-file {os.path.basename(mntpoint)}.pid {mntpoint}")
+    else:
+        os.system(f"guestmount -a {diskimg} --rw -i --pid-file {os.path.basename(mntpoint)}.pid {mntpoint}")
+
+    return mntpoint
 
 def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, dev, db):
     db_match = set()
@@ -101,14 +103,11 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
 
 def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, coremod, coredep, fdep_func, fdep_ko, linux_build):
 
-    def patchcb(vmlinux):
-        return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, hwfilter.get_target_info(img_mounted)[1])
-
-    newkern = hwfilter.repack_kernel(img_mounted, linux_build, patchcb)
-#    hwfilter.replace_kernel(img_mounted, linux_build, newkern)
-#    hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
-#    hwfilter.patch_module(img_mounted, fdep_ko)
-#     hwfilter.patch_initrd(img_mounted, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
+    newkern = hwfilter.patch_kernel(img_mounted, bi_rm|builtin_dep|fdep_func)
+    hwfilter.replace_kernel(img_mounted, newkern)
+    hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
+    hwfilter.patch_module(img_mounted, fdep_ko)
+    hwfilter.patch_initrd(img_mounted, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
 
     return
 
