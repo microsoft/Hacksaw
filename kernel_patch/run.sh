@@ -8,6 +8,7 @@
 
 KERN_SRC=$(realpath "$1")
 DATASET_DIR=$(realpath "$2")
+ARGS="${@:2}"
 KERN_BUILD="${KERN_SRC}/build_llvm"
 curdir=$(dirname $(realpath $0))
 OUTPUT_DIR=$(dirname ${curdir})/out
@@ -19,4 +20,4 @@ ${curdir}/runfilter.py -k ${KERN_SRC} \
     -P ${DATASET_DIR} \
     -p ${OUTPUT_DIR} \
     -o ${OUTPUT_DIR} \
-    -t -n 1
+    ${ARGS}
