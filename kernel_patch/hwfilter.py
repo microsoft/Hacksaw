@@ -193,23 +193,24 @@ def check_rmf(f, mod, patched, fdeps, odeps, processed, \
     #for caller, cmod in odeps.frevdep_map[f]:
     newpatched = set()
     bypasscnt = 0
-    rmflag = (f, mod) in fdeps and len(fdeps[(f, mod)]) > 0
+    rmflag = fdeps and (f, mod) in fdeps and len(fdeps[(f, mod)]) > 0
     if not rmflag:
         return (False, {})
     for cf, cmod in fdeps[(f, mod)]:
         if cmod.endswith(".o"):
-            #if mod == cmod or cf in patched:
-            if mod == cmod:
-                if (cf, cmod) not in fdeps:
-                    bypasscnt += 1
-                    continue
-            if cf in patched:
+            #if mod == cmod:
+            #    if (cf, cmod) not in fdeps:
+            #        bypasscnt += 1
+            #        continue
+            #if cf in patched:
+            if mod == cmod or cf in patched:
                 continue
             else:
-                flag, rmset = check_rmf(cf, cmod, patched|newpatched, fdeps, odeps, processed, \
+                rmflag, rmset = check_rmf(cf, cmod, patched|newpatched, odeps.related(cf), odeps, processed, \
                         relmod_bypass_filter, relmod_filter, func_check)
-                rmflag = rmflag and flag
                 newpatched.update(rmset)
+                if not rmflag:
+                    break
         else:
             # .ko
             m = re.sub('-', '_', os.path.basename(cmod).split('.')[0])
@@ -219,7 +220,8 @@ def check_rmf(f, mod, patched, fdeps, odeps, processed, \
             if relmod_filter and relmod_filter(m):
                 rmflag = False
                 break
-    return (rmflag and bypasscnt != len(fdeps[(f, mod)]), newpatched)
+    #return (rmflag and bypasscnt != len(fdeps[(f, mod)]), newpatched)
+    return (rmflag, newpatched)
 
 def check_fdep(fdep_checklist, patch_sym, odeps, \
         relmod_bypass_filter=None, relmod_filter=None, func_check=None, mod_check=None):
@@ -580,16 +582,20 @@ def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None, extra=[]):
     kern_text_off, kern_text_va = disasm.get_text_rel(vmlinux)
     for sym in patch_set:
         off = patch_set[sym]
-        patch_ranges.append(disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va)))
+        patch_ranges.append((sym, disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va))))
     print("Patch kernel - disasm : ", time.time()-prev_time)
     prev_time = time.time()
 
     with open(vmlinux, 'rb') as fd:
         data = list(fd.read())
-    for patch_range in patch_ranges:
+    for sym, patch_range in patch_ranges:
         ret_patched = False
+        if not patch_range:
+            continue
+        #print(sym, patch_range)
         for poff in patch_range:
             plen = patch_range[poff]
+            #print(hex(poff), hex(plen))
             if not ret_patched:
                 # Skip Ftrace Stub
                 if data[poff] == 0xe8:
@@ -1131,16 +1137,21 @@ def replace_kernel(check_dir, newkern):
 ## Obtain Hardware Ids
 # find /sys/devices/ -name modalias|xargs -I{} cat "{}"
 if __name__ == '__main__':
-    hwconf = sys.argv[1]
-    devdb_path = sys.argv[2]
-    check_dir = sys.argv[3]
+    #hwconf = sys.argv[1]
+    #devdb_path = sys.argv[2]
+    #check_dir = sys.argv[3]
 
-    linux_build="/home/hu/workspace/hu/linux/build_llvm"
-    linux_src="/home/hu/workspace/hu/linux"
+    #linux_build="/home/hu/workspace/hu/linux/build_llvm"
+    #linux_src="/home/hu/workspace/hu/linux"
 
-    builtin_objdeplist = "/home/hu/workspace/hu/uForkLift/coredev_v2/5.19.17/builtin-z3-allmodconfig.txt"
-    _,_,_,patch_list,*_ = check_drivers(hwconf, devdb_path, check_dir)
-    rmmod,symtab = get_target_info(check_dir)
-    patch_builtin(patch_list, symtab)
+    #builtin_objdeplist = "/home/hu/workspace/hu/uForkLift/coredev_v2/5.19.17/builtin-z3-allmodconfig.txt"
+    #_,_,_,patch_list,*_ = check_drivers(hwconf, devdb_path, check_dir)
+    #rmmod,symtab = get_target_info(check_dir)
+    #patch_builtin(patch_list, symtab)
 
-    print(patch_builtin("/home/hu/Hacksaw/out/repack/vmlinux.unpack", set(), "/home/hu/Hacksaw/xxx/boot/System.map-5.15.0-1011-aws", extra=["check_bugs"]))
+    with open('/home/hu/Hacksaw/openSUSE-Leap-15.4.x86_64-1.0.1-GCE-Build2.85.raw.dbg', 'r') as fd:
+        patchset = set(fd.read().strip().split('\n'))
+    modver = get_kernel_ver("/home/hu/Hacksaw/out/bigroot/0")
+    print(modver)
+    #print(patch_builtin("/home/hu/Hacksaw/out/repack/vmlinux.unpack", patchset, "/home/hu/Hacksaw/out/repack/linux-stable/build/System.map", filter_key=['console', 'lookup_one_len_unlocked', 'skb_unlink'], extra=[]))
+    print(patch_builtin("/home/hu/Hacksaw/out/repack/vmlinux.unpack", patchset, f"/home/hu/Hacksaw/out/bigroot/0/boot/System.map-{modver}", filter_key=[], extra=[]))
