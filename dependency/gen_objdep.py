@@ -62,8 +62,8 @@ class ObjDeps(object):
         for root,_,fs in os.walk(linux_build):
             for f in fs:
                 f = os.path.join(root, f)
-                mod = f[:-7]
                 if f.endswith(".o.symtab"):
+                    mod = re.sub('-', '_', f[:-7])
                     with open(f, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
@@ -86,6 +86,7 @@ class ObjDeps(object):
                                         tmp = mod
                                     self.mod_map[sym] = tmp
                 elif f.endswith(".o.symoff"):
+                    mod = re.sub('-', '_', f[:-7])
                     with open(f, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
@@ -94,7 +95,8 @@ class ObjDeps(object):
                             m = re.match(symoffpat, line)
                             sym, off = m.group(1, 2)
                             self.off_map[mod][sym] = int(off, 16)
-                elif f.endswith(".o.imptab"):
+                elif f.endswith(".imptab"):
+                    mod = re.sub('-', '_', f[:-7]) + '.o'
                     with open(f, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
@@ -105,7 +107,8 @@ class ObjDeps(object):
                                 self.fdep_map[mod][sym] = set()
                             self.fdep_map[mod][sym].add(call)
                             self.frevdep_map[call].add((sym, mod))
-                elif f.endswith(".o.symlnk"):
+                elif f.endswith(".symlnk"):
+                    mod = re.sub('-', '_', f[:-7]) + '.o'
                     with open(f, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
@@ -115,7 +118,8 @@ class ObjDeps(object):
                             if func not in self.gdat_lnks[mod]:
                                 self.gdat_lnks[mod][func] = set()
                             self.gdat_lnks[mod][func].add(gdat)
-                elif f.endswith(".o.symcbs"):
+                elif f.endswith(".symcbs"):
+                    mod = re.sub('-', '_', f[:-7]) + '.o'
                     with open(f, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):

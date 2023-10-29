@@ -6,9 +6,11 @@ import time
 import pickle
 import psutil
 import subprocess
-import hwfilter
 import multiprocessing
+import tempfile
 from argparse import ArgumentParser, Namespace
+
+import hwfilter
 
 CURDIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(CURDIR, "..", "dependency"))
@@ -39,15 +41,15 @@ def unmount_image(img_mounted):
             pid = int(fd.read())
         while psutil.pid_exists(pid):
             time.sleep(1)
-        os.system(f"rm {pidfile}")
+        os.unlink(pidfile)
+        os.rmdir(img_mounted)
     except subprocess.CalledProcessError:
         return False
     return True
 
 
 def mount_image(diskimg):
-    mntpoint = "/tmp/" + os.path.basename(diskimg)
-    os.system(f"mkdir -p {mntpoint}")
+    mntpoint = tempfile.mkdtemp()
     unmount_image(mntpoint)
 
     print(f"mounting {diskimg}")
@@ -90,8 +92,8 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
     builtin_dep.update(tup[8])
     mod_builtin_dep.update(tup[9])
     noentry.update(tup[10])
-    coremod.update(tup[11])
-    coredep.update(tup[12])
+    # coremod.update(tup[11])
+    # coredep.update(tup[12])
     fdep_func.update(tup[13])
     fdep_ko.update(tup[14])
     allkernfunc.update(tup[15])
@@ -101,13 +103,22 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
     return (db_match, rm, unk, bi_rm, allmod, bi_match, allbuiltin, mod_dep, builtin_dep, mod_builtin_dep, noentry, coremod, coredep, fdep_func, fdep_ko, allkernfunc, allbtdrv, rmbtdrv)
 
 
-def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, coremod, coredep, fdep_func, fdep_ko, linux_build):
+def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build):
+    print('bi_rm:', len(bi_rm))
+    print('mod_dep:', len(mod_dep))
+    print('builtin_dep:', len(builtin_dep))
+    print('mod_builtin_dep:', len(mod_builtin_dep))
+    print('noentry:', len(noentry))
+    print('fdep_func:', len(fdep_func))
+    print('fdep_ko:', len(fdep_ko))
 
+#    newkern = hwfilter.patch_kernel(img_mounted, bi_rm)
     newkern = hwfilter.patch_kernel(img_mounted, bi_rm|builtin_dep|fdep_func)
     hwfilter.replace_kernel(img_mounted, newkern)
-    hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
+    hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry)
+# TODO: update modules.* files in the target system image
     hwfilter.patch_module(img_mounted, fdep_ko)
-    hwfilter.patch_initrd(img_mounted, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
+    hwfilter.patch_initrd(img_mounted, rm|mod_dep|mod_builtin_dep|noentry)
 
     return
 
@@ -131,10 +142,10 @@ if __name__ == '__main__':
 
     img_mounted = mount_image(diskimg)
 
-    _, rm, _, bi_rm, _, _, _, mod_dep, builtin_dep, mod_builtin_dep, noentry, coremod, coredep, fdep_func, fdep_ko, _, _, _ = \
+    _, rm, _, bi_rm, _, _, _, mod_dep, builtin_dep, mod_builtin_dep, noentry, _, _, fdep_func, fdep_ko, _, _, _ = \
         analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, hwprof, hwdb)
 
-    patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, coremod, coredep, fdep_func, fdep_ko, linux_build)
+    patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build)
 
     unmount_image(img_mounted)
 
