@@ -8,7 +8,7 @@
 
 KERN_SRC=$(realpath "$1")
 DATASET_DIR=$(realpath "$2")
-ARGS="${@:2}"
+ARGS="${@:3}"
 KERN_BUILD="${KERN_SRC}/build_llvm"
 curdir=$(dirname $(realpath $0))
 OUTPUT_DIR=$(dirname ${curdir})/out
