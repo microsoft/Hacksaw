@@ -726,8 +726,10 @@ def remove_module(check_dir, rmmods, mod_ver=None):
             m = mod.split('.')[0]
             if m in rmmods or re.sub('-', '_', m) in rmmods:
                 drv_path = os.path.join(root, mod)
-                os.rename(drv_path, drv_path + '.hacksawed')
-#                os.unlink(drv_path)
+                os.unlink(drv_path)
+#                os.rename(drv_path, drv_path + '.hacksawed')
+
+    os.system(f"depmod -a -b {check_dir} {mod_ver}")
     
 
 def calc_module_size(check_dir, rmmods, mod_ver=None):

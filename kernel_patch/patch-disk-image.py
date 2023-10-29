@@ -116,7 +116,6 @@ def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, n
     newkern = hwfilter.patch_kernel(img_mounted, bi_rm|builtin_dep|fdep_func)
     hwfilter.replace_kernel(img_mounted, newkern)
     hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry)
-# TODO: update modules.* files in the target system image
     hwfilter.patch_module(img_mounted, fdep_ko)
     hwfilter.patch_initrd(img_mounted, rm|mod_dep|mod_builtin_dep|noentry)
 
