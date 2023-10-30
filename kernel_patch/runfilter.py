@@ -291,16 +291,32 @@ if __name__ == '__main__':
                 modver = hwfilter.get_kernel_ver(chkdir)
                 #patchlist = [x for x in bi_rm|builtin_dep if 'dm_' not in x]
                 return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, \
-                        os.path.join(chkdir, "boot", "System.map-"+modver))
+                        os.path.join(chkdir, "boot", "System.map-"+modver) \
+                        #, filter_key=['SCT']    # Avoid messing with static calls (__SCT__might_resched)
+                        #, extra = ["check_bugs"] \
+                        )
+
+            def patchcb_initonly(vmlinux):
+                modver = hwfilter.get_kernel_ver(chkdir)
+                #patchlist = [x for x in bi_rm|builtin_dep if 'dm_' not in x]
+                return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, \
+                        os.path.join(chkdir, "boot", "System.map-"+modver) \
+                        , initonly=True
+                        #, filter_key=['SCT']    # Avoid messing with static calls (__SCT__might_resched)
+                        #, extra = ["check_bugs"] \
+                        )
 
             replace_kern = False
+            cb = patchcb
             if os.path.basename(img) in [
                     "openSUSE-Leap-15.4.x86_64-1.0.1-GCE-Build2.85.raw",
                     "suse.raw",
+                    "CentOS-Stream-ec2-9-20220829.0.x86_64.raw",
                     ]:
                 replace_kern = True
+                cb = patchcb_initonly
 
-            newkern = hwfilter.repack_kernel(chkdir, workdir, patchcb, replace_kern)
+            newkern = hwfilter.repack_kernel(chkdir, workdir, cb, replace_kern)
 
             #hwfilter.replace_init(chkdir)
             hwfilter.replace_kernel(chkdir, newkern)
@@ -311,7 +327,7 @@ if __name__ == '__main__':
             #hwfilter.patch_initrd(chkdir, set(), ["scsi_mod", "ata", "sd_mod"], opensuse_fstab_patch=True)
             initrdstat = (0, 0)
             initrdstat = hwfilter.patch_initrd(chkdir, workdir, rm|mod_dep|mod_builtin_dep|noentry|coremod|coredep)
-            hwfilter.remove_firmware(chkdir)
+            #hwfilter.remove_firmware(chkdir)
 
             #hwfilter.check_rop_gadgets(tag)
 

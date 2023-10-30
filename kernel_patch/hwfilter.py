@@ -206,6 +206,7 @@ def check_rmf(f, mod, patched, fdeps, odeps, processed, \
             if mod == cmod or cf in patched:
                 continue
             else:
+                rmflag = False
                 rmflag, rmset = check_rmf(cf, cmod, patched|newpatched, odeps.related(cf), odeps, processed, \
                         relmod_bypass_filter, relmod_filter, func_check)
                 newpatched.update(rmset)
@@ -552,7 +553,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     #exit(0)
 
 
-def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None, extra=[]):
+def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None, extra=[], initonly=False):
     symtab = []
     with open(sym_tab, 'r') as fd:
         data = fd.read().strip()
@@ -568,11 +569,13 @@ def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None, extra=[]):
     for sym in patch_list|set(extra):
         if sym.startswith("__initcall_"):
             osym = initcall_sym2init(sym)
-        else:
+        elif not initonly:
             osym = sym
             if filter_key and True in [t in sym for t in filter_key]:
                 continue
-        if osym not in sym_map:
+        else:
+            osym = None
+        if not osym or osym not in sym_map:
             continue
         patch_set[osym] = sym_map[osym] - sym_map['_text']
 

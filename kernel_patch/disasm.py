@@ -68,8 +68,8 @@ def disasm(fn, off, raw_off=False, text_rel=None):
     expected_dis = set()
     #print("DEBUG disas ", hex(off), hex(text_va), hex(text_off), hex(len(data)))
     insnlist = list(d.disasm(data[off:off+16], text_va))
-    # Disasm 3 instructions, skip __fentry__
-    maxinsn = 3
+    # Disasm 2 instructions, skip __fentry__
+    maxinsn = 2
     insncnt = 0
     while insnlist:
         if insncnt > maxinsn:
