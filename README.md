@@ -1,14 +1,12 @@
-# Project
+# Hacksaw
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+> These repository is in WiP.
+> The CCS 2023 artifact evaluators are expected to
+> visit https://github.com/microsoft/hacksaw/tree/ccs23ae.
 
-As the maintainer of this project, please make a few updates:
-
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+This repository contains an early-stage prototype for Hacksaw,
+which will be presented at
+[ACM Conference on Computer and Communications Security (CCS)](https://www.sigsac.org/ccs/CCS2023/).
 
 ## Contributing
 

@@ -1,0 +1,28 @@
+authors:
+    - family-names: Hu
+      given-names:  Zhenghao
+      affiliation:  "New York University"
+    - family-names: Lee
+      given-names:  Sangho 
+      affiliation:  "Microsoft Research"
+    - family-names: Peinado 
+      given-names:  Marcus
+      affiliation:  "Microsoft Research"
+cff-version: 1.2.0
+message: "If you use this software, please cite the following article."
+preferred-citation:
+  type: conference-paper
+  authors:
+    - family-names: Hu
+      given-names:  Zhenghao
+      affiliation:  "New York University"
+    - family-names: Lee
+      given-names:  Sangho 
+      affiliation:  "Microsoft Research"
+    - family-names: Peinado 
+      given-names:  Marcus
+      affiliation:  "Microsoft Research"
+  title: "Hacksaw: Hardware-Centric Kernel Debloating via Device Inventory and Dependency Analysis"
+  collection-title: "Proceedings of the 30th ACM Conference on Computer and Communications Security (CCS 2023)"
+  year: 2023
+  month: 11
