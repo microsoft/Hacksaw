@@ -287,8 +287,24 @@ if __name__ == '__main__':
             else:
                 os.system(f"guestmount -a {patch_img} --rw -i --pid-file {os.path.basename(chkdir)}.pid {chkdir}")
 
+            def patchgrub(chkdir):
+                if os.path.exists(os.path.join(chkdir, 'boot/grub2/grub.cfg')):
+                    os.system(f"chmod +w {os.path.join(chkdir, 'boot/grub2/grub.cfg')}")
+                    os.system(f"sed -i 's/ console=/ init=\/bin\/sh console=/' {os.path.join(chkdir, 'boot/grub2/grub.cfg')}")
+
+                if os.path.exists(os.path.join(chkdir, 'boot/grub/grub.cfg')):
+                    os.system(f"chmod +w {os.path.join(chkdir, 'boot/grub/grub.cfg')}")
+                    os.system(f"sed -i 's/ console=/ init=\/bin\/sh console=/' {os.path.join(chkdir, 'boot/grub/grub.cfg')}")
+
+                if os.path.exists(os.path.join(chkdir, 'boot/loader/entries')):
+                    for _,_,confs in os.walk(os.path.join(chkdir, 'boot/loader/entries')):
+                        for f in confs:
+                            os.system(f"chmod +w {os.path.join(chkdir, 'boot/loader/entries', f)}")
+                            os.system(f"sed -i 's/ console=/ init=\/bin\/sh console=/' {os.path.join(chkdir, 'loader/entries', f)}")
+
             def patchcb(vmlinux):
                 modver = hwfilter.get_kernel_ver(chkdir)
+                patchgrub(chkdir)
                 #patchlist = [x for x in bi_rm|builtin_dep if 'dm_' not in x]
                 return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, \
                         os.path.join(chkdir, "boot", "System.map-"+modver) \
@@ -298,6 +314,7 @@ if __name__ == '__main__':
 
             def patchcb_initonly(vmlinux):
                 modver = hwfilter.get_kernel_ver(chkdir)
+                patchgrub(chkdir)
                 #patchlist = [x for x in bi_rm|builtin_dep if 'dm_' not in x]
                 return hwfilter.patch_builtin(vmlinux, bi_rm|builtin_dep|fdep_func, \
                         os.path.join(chkdir, "boot", "System.map-"+modver) \

@@ -207,9 +207,9 @@ def check_rmf(f, mod, patched, fdeps, odeps, processed, \
                 continue
             else:
                 rmflag = False
-                rmflag, rmset = check_rmf(cf, cmod, patched|newpatched, odeps.related(cf), odeps, processed, \
-                        relmod_bypass_filter, relmod_filter, func_check)
-                newpatched.update(rmset)
+                #rmflag, rmset = check_rmf(cf, cmod, patched|newpatched, odeps.related(cf), odeps, processed, \
+                #        relmod_bypass_filter, relmod_filter, func_check)
+                #newpatched.update(rmset)
                 if not rmflag:
                     break
         else:
