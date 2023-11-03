@@ -7,5 +7,5 @@ pushd ./docker
 popd
 
 ./driver_model/run-docker.sh
-./comp_unit/docker-run.sh
+./comp_unit/run-docker.sh
 ./hwdb/run-docker.sh
