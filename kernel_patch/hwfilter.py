@@ -198,28 +198,37 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
     #  populate graph
     new_fdep_checklist = set()
     for o,f in fdep_checklist_ex:
-        fdeps = odeps.related(o,f)
+        imports = odeps.imports(o,f)
+        if imports is not None:
+            for sym in imports:
+                mods = odeps.get_mods(sym)
+                if mods is None:
+                    continue
+                for mod in mods:
+                    new_fdep_checklist.add((mod,sym))
 
+        fdeps = odeps.related(o,f)
         if fdeps is None or len(fdeps) == 0:
-            imports = odeps.imports(o,f)
-            if imports is not None:
-                for sym in imports:
-                    mods = odeps.get_mods(sym)
-                    if mods is not None:
-                        for mod in mods:
-                            new_fdep_checklist.add((mod,sym))
             continue
 
+        if (o,f) in fdeps:
+            for caller, cmod in fdeps[(o,f)]:
+                new_fdep_checklist.add((cmod,caller))
+
         for relf, relmod in fdeps:
+            if relf == o and relmod == f:
+                continue
             new_fdep_checklist.add((relmod,relf))
 
             imports = odeps.imports(relmod,relf)
-            if imports is not None:
-                for sym in imports:
-                    mods = odeps.get_mods(sym)
-                    if mods is not None:
-                        for mod in mods:
-                            new_fdep_checklist.add((mod,sym))
+            if imports is None:
+                continue
+            for sym in imports:
+                mods = odeps.get_mods(sym)
+                if mods is None:
+                    continue
+                for mod in mods:
+                    new_fdep_checklist.add((mod,sym))
 
             for caller, cmod in fdeps[(relf,relmod)]:
                 new_fdep_checklist.add((cmod,caller))
@@ -422,18 +431,20 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     new_patch_list = patch_list.copy()
     new_builtin_mod_remove = builtin_mod_remove.copy()
     for m in builtin_mod_remove:
-        if m in rev_dep:
-            for dep in rev_dep[m]:
-                func = ""
-                if dep in driver_map:
-                    func = driver_map[dep]
-                for sym in skip_list:
-                    if match_initcall_sig(dep, func, sym):
-                        if gen_objdep.is_permanent_symbol(sym):
-                            continue
-                        new_patch_list.add((mod,sym))
-                        new_builtin_mod_remove.add(dep)
-                        break
+        if m not in rev_dep:
+            continue
+        for dep in rev_dep[m]:
+            func = ""
+            if dep in driver_map:
+                func = driver_map[dep]
+            for sym in skip_list:
+                if not match_initcall_sig(dep, func, sym):
+                    continue
+                if gen_objdep.is_permanent_symbol(sym):
+                    continue
+                new_patch_list.add((mod,sym))
+                new_builtin_mod_remove.add(dep)
+                break
 
     # Mod Deps over Builtin
     new_new_mod_remove = new_mod_remove.copy()
@@ -499,14 +510,15 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     for m in cur_removed_mods:
         mod_removed.update([os.path.join(mod_dir, p) for p in diskmodmaps[m]])
     for m in mod_removed:
-        if os.path.exists(m):
-            for sym in checkmodsym.get_sym(m, set(['U'])):
-                exporters = odeps.get_mods(sym, global_only=True)
-                if exporters is None:
-                    continue
-                for exporter in exporters:
-                    if odeps.is_module(exporter):
-                        fdep_checklist.add((exporter, sym))
+        if not os.path.exists(m):
+            continue
+        for sym in checkmodsym.get_sym(m, set(['U'])):
+            exporters = odeps.get_mods(sym, global_only=True)
+            if exporters is None:
+                continue
+            for exporter in exporters:
+                if odeps.is_module(exporter):
+                    fdep_checklist.add((exporter, sym))
 
     def relmod_bypass_filter(mod):
         return mod not in new_mod_exists and mod not in builtin_mod_exists
