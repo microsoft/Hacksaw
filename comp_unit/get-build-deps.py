@@ -49,11 +49,11 @@ def load_configs(args: Namespace) -> Dict:
         obj_kconf_expr_file=os.path.realpath(args.obj_kconf_expr_file)
 
         global nworkers
-        if args.num_workers != None:
+        if args.num_workers is not None:
             nworkers = int(args.num_workers)
 
         global builtin_objs
-        if args.builtin_obj_file != None:
+        if args.builtin_obj_file is not None:
             if not os.path.exists(args.builtin_obj_file):
                 print(args.builtin_obj_file, "does not exist", file=sys.stderr)
                 return False

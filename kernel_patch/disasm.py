@@ -67,7 +67,7 @@ def disasm(fn, off, raw_off=False, text_rel=None):
     d = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     expected_dis = set()
     insnlist = list(d.disasm(data[off:off+16], text_va))
-    maxinsn = 3
+    maxinsn = 2
     insncnt = 0
     while insnlist:
         if insncnt > maxinsn:

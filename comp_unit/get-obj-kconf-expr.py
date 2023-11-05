@@ -53,7 +53,7 @@ def load_configs(args: Namespace) -> Dict:
             return False
 
         global output_path
-        if args.output_path != None:
+        if args.output_path is not None:
             if args.output_path[0] == '/':
                 output_path = args.output_path
             else:
@@ -62,7 +62,7 @@ def load_configs(args: Namespace) -> Dict:
             output_path = os.getcwd() + '/out'
 
         global nworkers
-        if args.num_workers != None:
+        if args.num_workers is not None:
             nworkers = int(args.num_workers)
 
     except Exception as err:

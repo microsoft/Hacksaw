@@ -84,21 +84,6 @@ def get_sym(mod, symty):
         temp = True
         kopath = tempfile.mkstemp(suffix=".ko", dir="/tmp/")[1]
         os.system(f"xzcat {mod} > {kopath}")
-    #with open(kopath, 'rb') as fd:
-    #    elf = ELFFile(fd)
-    #    for sec in elf.iter_sections():
-    #        if not isinstance(sec, SymbolTableSection):
-    #            continue
-    #        for sym in sec.iter_symbols():
-    #            ty = None
-    #            if describe_symbol_shndx(sym['st_shndx']) == 'UND':
-    #                ty = 'U'
-    #            elif describe_symbol_type(sym['st_info']['type']) == 'FUNC':
-    #                ty = 'T'
-    #            else:
-    #                ty = 'V'
-    #            if ty in symty:
-    #                symlist.append(sym.name)
     output = subprocess.check_output(['nm', kopath])
     for line in output.decode('latin-1').strip().split('\n'):
         tup = line.strip().split()
@@ -111,19 +96,13 @@ def get_sym(mod, symty):
         os.system(f"rm {kopath}")
     return symlist
 
-#mod = sys.argv[1]
-#cmpmod = sys.argv[2]
-#mod_import = set(get_sym(mod, ['U', 'u']))
-#cmpmod_export = set(get_sym(cmpmod, ['B', 'b', 'C', 'c', 'D', 'd', 'G', 'g', 'S', 's', 'T', 't']))
-#print(mod_import.intersection(cmpmod_export))
-
 def get_data_deps(linux_build_path):
     data_deps = dict()
     rev_dep = get_deps(linux_build_path)
     for k in rev_dep:
         if len(rev_dep[k]) < 2:
             continue
-        export_sym = set(get_sym(k, ['B', 'b', 'C', 'c', 'D', 'd', 'G', 'g', 'S', 's', 'T', 't']))
+        export_sym = set(get_sym(k, ['B', 'b', 'C', 'c', 'D', 'd', 'G', 'g', 'S', 's', 'T', 't', 'W', 'w', 'V', 'v']))
         import_symmap = dict()
         for mod in rev_dep[k]:
             isym = export_sym.intersection(set(get_sym(mod, ['U', 'u'])))
@@ -159,12 +138,4 @@ def get_data_deps(linux_build_path):
     return data_deps
 
 if __name__ == "__main__":
-    get_sym('ib_iser.ko', ['t', 'T'])
-    exit(0)
-    LINUX_BUILD = "./linux/build_llvm"
-    data_deps = get_data_deps(LINUX_BUILD)
-    for m in data_deps:
-        for n in data_deps[m]:
-            print(m, ",", n)
-            for t in data_deps[m][n]:
-                print(t)
+    sys.exit(0)

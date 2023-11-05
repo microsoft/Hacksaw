@@ -49,7 +49,7 @@ def load_configs(args: Namespace) -> Dict:
         pass_name = args.pass_name
 
         global bcs 
-        if args.bc_list != None:
+        if args.bc_list is not None:
             if not os.path.exists(args.bc_list):
                 print(args.bc_list, "does not exist", file=sys.stderr)
                 return False
@@ -58,7 +58,7 @@ def load_configs(args: Namespace) -> Dict:
                     bcs.append(line.rstrip())
 
         global nworkers
-        if args.num_workers != None:
+        if args.num_workers is not None:
             nworkers = int(args.num_workers)
 
     except Exception as err:
