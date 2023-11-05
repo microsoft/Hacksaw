@@ -493,6 +493,8 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     for modname,initsym in new_patch_list:
         sym = initcall_sym2init(initsym)
         mods = odeps.get_mods(sym)
+        if mods is None:
+            continue
         if len(mods) == 1:
             patch_sym.add((list(mods)[0],sym))
         else:
