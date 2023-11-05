@@ -104,15 +104,15 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
 
 
 def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build):
-    print('bi_rm:', len(bi_rm))
-    print('mod_dep:', len(mod_dep))
-    print('builtin_dep:', len(builtin_dep))
-    print('mod_builtin_dep:', len(mod_builtin_dep))
-    print('noentry:', len(noentry))
-    print('fdep_func:', len(fdep_func))
-    print('fdep_ko:', len(fdep_ko))
+#     print('rm:', len(rm))
+#     print('bi_rm:', len(bi_rm))
+#     print('mod_dep:', len(mod_dep))
+#     print('builtin_dep:', len(builtin_dep))
+#     print('mod_builtin_dep:', len(mod_builtin_dep))
+#     print('noentry:', len(noentry))
+#     print('fdep_func:', len(fdep_func))
+#     print('fdep_ko:', len(fdep_ko))
 
-#    newkern = hwfilter.patch_kernel(img_mounted, bi_rm)
     newkern = hwfilter.patch_kernel(img_mounted, bi_rm|builtin_dep|fdep_func)
     hwfilter.replace_kernel(img_mounted, newkern)
     hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry)
@@ -129,15 +129,46 @@ if __name__ == '__main__':
     hwprof = args.hw_profile
     diskimg = args.disk_image
 
+    if not os.path.exists(linux_src):
+        print(linux_src, "does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.exists(linux_build):
+        print(linux_build, "does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.exists(hwprof):
+        print(hwprof, "does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.exists(diskimg):
+        print(diskimg, "does not exist", file=sys.stderr)
+        sys.exit(1)
+
     builtin_objdeplist = os.path.join(args.db_path, "builtin-objs.dep")
+    if not os.path.exists(builtin_objdeplist):
+        print(builtin_objdeplist, "does not exist", file=sys.stderr)
+        sys.exit(1)
     btobj_deps = gen_objdep.load_btobj_deps(args.kernel_build, builtin_objdeplist)
+
+    asm_sym_list = os.path.join(args.db_path, "asmsym.list")
+    if os.path.exists(asm_sym_list):
+        gen_objdep.load_asm_symbols(asm_sym_list)
 
     busreg_lists = [
             os.path.join(args.db_path, "bus-regfuns.db"),
             os.path.join(args.db_path, "class-regfuns.db"),
             ]
-    busreg_apis = gen_objdep.load_busreg_apis(busreg_lists)
+    for busreg in busreg_lists:
+        if not os.path.exists(busreg):
+            print(busreg, "does not exist", file=sys.stderr)
+            sys.exit(1)
+
+    busreg_apis = gen_objdep.load_busreg_apis(args.kernel_build, busreg_lists)
     hwdb = os.path.join(args.db_path, "hw.db")
+    if not os.path.exists(hwdb):
+        print(hwdb, "does not exists", file=sys.stderr)
+        sys.exit(1)
 
     img_mounted = mount_image(diskimg)
 

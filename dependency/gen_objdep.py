@@ -12,6 +12,47 @@ import hwfilter
 sys.path.append(os.path.join(CURDIR, "..", "hwdb", "prepare_database"))
 import modinitcb
 
+module_symbols = set([
+    'ia32_sys_finit_module',
+    'ia32_sys_init_module',
+    'module_get',
+    'modver_version_show',
+    'x64_sys_finit_module',
+    'x64_sys_init_module',
+    'cleanup_module',
+    'do_init_module',
+    'init_module',
+    'load_module',
+    'module_put',
+    'module_put_and_exit',
+    'print_modules',
+    'retpoline_module_ok',
+    'try_module_ext'
+])
+
+def is_module_symbol(sym):
+    sym_norm = re.sub("^_*", "", sym)
+    if sym_norm in module_symbols or sym_norm[:5] == "llvm.":
+        return True
+    return False
+
+# symbols that shouldn't be removed
+permanent_symbols = set([
+    "thermal_init",
+    "acpi_thermal_init"
+])
+def load_asm_symbols(asm_sym_list):
+    with open(asm_sym_list, 'r') as f:
+        for line in f:
+            sym_norm = re.sub("^_*", "", line.rstrip())
+            permanent_symbols.add(sym_norm)
+
+def is_permanent_symbol(sym):
+    sym_norm = re.sub("^_*", "", sym)
+    if sym_norm in permanent_symbols:
+        return True
+    return False
+
 def load_btobj_deps(linux_build, builtin_objdeplist):
     obj_build_revdeps = collections.defaultdict(set)
     with open(builtin_objdeplist, 'r') as fd:
@@ -28,7 +69,7 @@ def load_btobj_deps(linux_build, builtin_objdeplist):
                 obj_build_revdeps[o].add(linked)
     return obj_build_revdeps
 
-def load_busreg_apis(busreg_list):
+def load_busreg_apis(linux_build, busreg_list):
     busreg_apis = set()
     for ln in busreg_list:
         with open(ln, 'r') as fd:
@@ -37,9 +78,18 @@ def load_busreg_apis(busreg_list):
                 line = line.strip()
                 if not line:
                     continue
-                _, api = line.split()
-                busreg_apis.add(api)
+                obj, api = line.split()
+                obj = os.path.join(linux_build, obj[:-3])
+                obj = re.sub('-', '_', obj)
+                busreg_apis.add((obj, api))
     return busreg_apis
+
+def normalize_object_name(fname, curext='.o', newext='.o', curpath=''):
+    obj = fname[:-len(curext)]
+    if curpath != '':
+        obj = os.path.join(curpath, obj)
+    obj = re.sub('-', '_', obj)
+    return obj + newext
 
 class ObjDeps(object):
     def __init__(self, linux_src, linux_build, btobj_deps):
@@ -49,22 +99,22 @@ class ObjDeps(object):
 
         self.import_table = collections.defaultdict(set)
         self.export_table = collections.defaultdict(set)
-        self.off_map = collections.defaultdict(dict)
+        self.global_export_table = collections.defaultdict(set)
         self.fdep_map = collections.defaultdict(dict)
         self.frevdep_map = collections.defaultdict(set)
-        self.mod_map = {}
-        self.full_mod_map = {}
+        self.mod_map = collections.defaultdict(set)
         self.drv_map = collections.defaultdict(set)
         self.gdat_cbs = collections.defaultdict(set)
         self.gdat_lnks = collections.defaultdict(dict)
+        self.fpref_map = collections.defaultdict(dict)
+        self.fpref_revmap = collections.defaultdict(dict)
 
-        symoffpat = re.compile(r".*<(.*)> \(File Offset: (.*)\):$")
         for root,_,fs in os.walk(linux_build):
-            for f in fs:
-                f = os.path.join(root, f)
-                if f.endswith(".o.symtab"):
-                    mod = re.sub('-', '_', f[:-7])
-                    with open(f, 'r') as fd:
+            for fname in fs:
+                fpath = os.path.join(root, fname)
+                if fname.endswith(".o.symtab") and not fname.endswith(".mod.o.symtab"):
+                    mod = normalize_object_name(fname, ".o.symtab", ".o", root)
+                    with open(fpath, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
                             line = line.strip()
@@ -74,64 +124,69 @@ class ObjDeps(object):
                             if ty == 'U':
                                 self.import_table[mod].add(sym)
                             else:
-                                addr = line.split()[0]
                                 self.export_table[mod].add(sym)
-                                if sym not in self.mod_map:
-                                    self.mod_map[sym] = mod
-                                    self.full_mod_map[sym] = set([mod])
-                                else:
-                                    self.full_mod_map[sym].add(mod)
-                                    tmp = self.mod_map[sym]
-                                    if len(os.path.dirname(mod)) > len(os.path.dirname(self.mod_map[sym])):
-                                        tmp = mod
-                                    self.mod_map[sym] = tmp
-                elif f.endswith(".o.symoff"):
-                    mod = re.sub('-', '_', f[:-7])
-                    with open(f, 'r') as fd:
-                        data = fd.read()
-                        for line in data.strip().split('\n'):
-                            if not line:
-                                continue
-                            m = re.match(symoffpat, line)
-                            sym, off = m.group(1, 2)
-                            self.off_map[mod][sym] = int(off, 16)
-                elif f.endswith(".imptab"):
-                    mod = re.sub('-', '_', f[:-7]) + '.o'
-                    with open(f, 'r') as fd:
+                                if ty == 'T':
+                                    self.global_export_table[mod].add(sym)
+                                self.mod_map[sym].add(mod)
+                elif fname.endswith(".o.imptab") and not fname.endswith(".mod.o.imptab"):
+                    mod = normalize_object_name(fname, ".o.imptab", ".o", root)
+                    with open(fpath, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
                             if not line:
                                 continue
                             sym, call = line.strip().split(' : ')
+                            if is_module_symbol(sym) or is_module_symbol(call):
+                                continue
                             if sym not in self.fdep_map[mod]:
                                 self.fdep_map[mod][sym] = set()
                             self.fdep_map[mod][sym].add(call)
                             self.frevdep_map[call].add((sym, mod))
-                elif f.endswith(".symlnk"):
-                    mod = re.sub('-', '_', f[:-7]) + '.o'
-                    with open(f, 'r') as fd:
+
+                elif fname.endswith(".o.symlnk") and not fname.endswith(".mod.o.symlnk"):
+                    mod = normalize_object_name(fname, ".o.symlnk", ".o", root)
+                    with open(fpath, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
                             if not line:
                                 continue
                             func, gdat = line.strip().split(' : ')
+                            if is_module_symbol(func) or is_module_symbol(gdat):
+                                continue
                             if func not in self.gdat_lnks[mod]:
                                 self.gdat_lnks[mod][func] = set()
                             self.gdat_lnks[mod][func].add(gdat)
-                elif f.endswith(".symcbs"):
-                    mod = re.sub('-', '_', f[:-7]) + '.o'
-                    with open(f, 'r') as fd:
+                elif fname.endswith(".o.symcbs") and not fname.endswith(".mod.o.symcbs"):
+                    mod = normalize_object_name(fname, ".o.symcbs", ".o", root)
+                    with open(fpath, 'r') as fd:
                         data = fd.read()
                         for line in data.strip().split('\n'):
                             if not line:
                                 continue
                             gdat, cb = line.strip().split(' : ')
+                            if is_module_symbol(gdat) or is_module_symbol(cb):
+                                continue
                             self.gdat_cbs[gdat].add(cb)
-                elif f.endswith('.mod'):
-                    ko = os.path.join(root, f[:-4]+".ko")
-                    assert (os.path.exists(ko))
-                    with open(os.path.join(root, f), 'r') as fd:
-                        objfiles = [obj for obj in fd.read().strip().split('\n')]
+                elif fname.endswith(".o.fptref") and not fname.endswith(".mod.o.fptref"):
+                    mod = normalize_object_name(fname, ".o.fptref", ".o", root)
+                    with open(fpath, 'r') as fd:
+                        data = fd.read()
+                        for line in data.strip().split('\n'):
+                            if not line:
+                                continue
+                            sym, fpref = line.strip().split(' : ')
+                            if is_module_symbol(sym) or is_module_symbol(fpref):
+                                continue
+                            if sym not in self.fpref_map[mod]:
+                                self.fpref_map[mod][sym] = set()
+                            if fpref not in self.fpref_revmap[mod]:
+                                self.fpref_revmap[mod][fpref] = set()
+                            self.fpref_map[mod][sym].add(fpref)
+                            self.fpref_revmap[mod][fpref].add(sym)
+                elif fname.endswith('.mod'):
+                    ko = normalize_object_name(fname, ".mod", ".ko", root)
+                    with open(fpath, 'r') as fd:
+                        objfiles = [obj for obj in fd.read().strip().replace('\n', ' ').split(' ')]
                         for objfile in objfiles:
                             # get makefile
                             if objfile.startswith("include/"):
@@ -139,7 +194,7 @@ class ObjDeps(object):
                             mk = os.path.join(linux_src, os.path.dirname(objfile), "Makefile")
                             while not os.path.exists(mk):
                                 mk = os.path.join(os.path.dirname(mk), "Kbuild")
-                                if os.path.exists(mk):
+                                if os.path.exists(mk) or mk == "/Kbuild":
                                     break
                                 pdir = os.path.dirname(os.path.dirname(mk))
                                 mk = os.path.join(pdir, "Makefile")
@@ -147,8 +202,7 @@ class ObjDeps(object):
                             if os.path.dirname(mk) == os.path.normpath(linux_src):
                                 continue
                             assert (os.path.exists(mk))
-        
-                            self.drv_map[os.path.join(linux_build, objfile)].add(ko)
+                            self.drv_map[normalize_object_name(objfile, curpath=linux_build)].add(ko)
         
         # link function through global variables
         for mod in self.gdat_lnks:
@@ -162,132 +216,20 @@ class ObjDeps(object):
                         self.fdep_map[mod][func].add(cb)
                         self.frevdep_map[cb].add((func, mod))
 
-    def funcdeps(self, reg_apis):
-        # Build Function dependency
-        function_uses = collections.defaultdict(set)
-        for mod in self.fdep_map:
-            if "vmlinux" in os.path.basename(mod):
-                continue
-            #print(mod, len(fdep_map[mod]))
-            for func in self.fdep_map[mod]:
-                for sym in self.fdep_map[mod][func]:
-                    # Skip Local symbol
-                    if sym in self.fdep_map[mod]:
-                        continue
-                    # Locate symbol in export table
-                    if sym in self.full_mod_map:
-                        for dmod in self.full_mod_map[sym]:
-                            if "vmlinux" in os.path.basename(dmod):
-                                continue
-                            if sym in self.export_table[dmod]:
-                                function_uses[(sym, dmod)].add((mod, func))
-        
-        if self.log:
-            with open("function_deps.list", 'w') as fd:
-                for sym, dmod in function_uses:
-                    if sym not in reg_apis:
-                        continue
-                    if dmod in self.drv_map:
-                        fd.write(f"{sym}, {str(self.drv_map[dmod])}\n")
-                    else:
-                        fd.write(f"{sym}, {dmod}:\n")
-                    for mod, func in function_uses[(sym, dmod)]:
-                        if mod in self.drv_map:
-                            #print(self.drv_map[mod])
-                            assert (len(self.drv_map[mod]) == 1)
-                            mod = list(self.drv_map[mod])[0]
-                        else:
-                            # Built-in
-                            pass
-                        fd.write(f"    {func}, {mod}\n")
-
-        ret = collections.defaultdict(set)
-        for sym, dmod in function_uses:
-            if sym not in reg_apis:
-                continue
-            if dmod in self.drv_map:
-                dmodset = self.drv_map[dmod]
-            else:
-                dmodset = set([dmod])
-            for o in dmodset:
-                for mod, func in function_uses[(sym, dmod)]:
-                    if mod in self.drv_map:
-                        #print(self.drv_map[mod])
-                        assert (len(self.drv_map[mod]) == 1)
-                        mod = list(self.drv_map[mod])[0]
-                    else:
-                        # Built-in
-                        pass
-                    ret[(sym, o)].add((func, mod))
-        return ret
-
-    def _load_sysmap(self, sysmap):
-        syms = set()
-        with open(sysmap, 'r') as fd:
-            data = fd.read().strip()
-            for line in data.split('\n'):
-                line = line.strip()
-                sym = line.split()[-1]
-                syms.add(sym)
-        return syms
-
-    def objdeps(self, sysmap):
-        if self.log:
-            with open("dupsym.list", 'w') as fd:
-                for sym in self.full_mod_map:
-                    if len(self.full_mod_map[sym]) > 2:
-                        print(sym, self.full_mod_map[sym])
-                        fd.write(f"{sym}, {self.full_mod_map[sym]}\n")
-        
-        # Build .o dependency
-        sym_deps = collections.defaultdict(set)
-        obj_deps = collections.defaultdict(set)
-        print(len(self.import_table))
-        print(len(self.export_table))
-        for depmod in self.export_table:
-            for mod in self.import_table:
-                if depmod == mod:
-                    continue
-                for sym in self.import_table[mod].intersection(self.export_table[depmod]):
-                    sym_deps[sym].add(mod)
-                    depmod = self.mod_map[sym]
-                    obj_deps[depmod].add(mod)
-        
-        #load database system.map
-        initcalls = set()
-        for sym in self._load_sysmap(sysmap):
-            if sym.startswith("__initcall__kmod_"):
-                initcalls.add(hwfilter.initcall_sym2init(sym))
-        
-        indi_mod = set()
-        seen = set()
-        with open('linkdeps.list', 'w') as fd:
-            for sym in initcalls:
-                mod = self.mod_map[sym]
-                #print(sym, mod, obj_deps[(sym, mod)])
-                for relsym in self.export_table[mod]:
-                    if mod in obj_deps:
-                        #print(sym, mod, relsym, len(obj_deps[mod]))
-                        fd.write(f"{relsym}, {mod}, {len(obj_deps[mod])}\n")
-                        seen.add(sym)
-                    else:
-                        indi_mod.add(mod)
-        
-        with open('nodep.list', 'w') as fd:
-            for sym in initcalls:
-                if not self.export_table[self.mod_map[sym]].intersection(seen):
-                    fd.write(f"{sym}, {self.mod_map[sym]}\n")
-
-    def related(self, sym):
-        if sym not in self.mod_map:
+    def imports(self, mod, sym):
+        if mod not in self.import_table:
             return None
-        m = self.mod_map[sym]
+        return self.import_table[mod]
+
+    def related(self, mod, sym):
+        if mod not in self.mod_map[sym]:
+            return None
         testmods = set()
-        if m in self.obj_build_revdeps:
-            testmods = self.obj_build_revdeps[m]
-            testmods.add(m)
+        if mod in self.obj_build_revdeps:
+            testmods = self.obj_build_revdeps[mod]
+            testmods.add(mod)
         else:
-            testmods.add(m)
+            testmods.add(mod)
 
         candid = collections.defaultdict(set)
         for mod in testmods:
@@ -302,6 +244,39 @@ class ObjDeps(object):
                         cmod = list(self.drv_map[cmod])[0]
                     candid[(relsym, mod)].add((caller, cmod))
         return candid
+
+    def has_referencer(self, mod, sym, patched_syms):
+        if mod not in self.fpref_revmap or sym not in self.fpref_revmap[mod]:
+            return False
+
+        refers = self.fpref_revmap[mod][sym]
+        patched_refers = set([])
+        for m,s in patched_syms:
+            if m == mod:
+                patched_refers.add(s)
+
+        if len(refers - patched_refers) == 0:
+            return False
+        return True
+
+    def get_mods(self, sym, global_only=False):
+        if sym not in self.mod_map:
+            return None
+        if global_only == False:
+            return self.mod_map[sym]
+
+        gmods = set([])
+        for mod in self.mod_map[sym]:
+            if mod in self.global_export_table and sym in self.global_export_table[mod]:
+                gmods.add(mod)
+        if len(gmods) == 0:
+            return None
+        return gmods
+
+    def is_module(self, obj):
+        if obj in self.drv_map:
+            return True
+        return False
 
 if __name__ == "__main__":
     sys.exit(0)

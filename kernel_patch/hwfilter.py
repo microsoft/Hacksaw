@@ -12,6 +12,8 @@ import tempfile
 import subprocess
 import checkmodsym
 import disasm
+import multiprocessing as mp
+from collections import defaultdict
 
 CURDIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(CURDIR, "..", "dependency"))
@@ -27,7 +29,7 @@ def load_alldrv(linux_build):
                 alldrv_list.add(mod)
     return alldrv_list
 
-def load_alldrv_path(linux_build):
+def load_alldrv_with_path(linux_build):
     alldrv_list = dict()
     for root,_,mods in os.walk(linux_build):
         for mod in mods:
@@ -80,20 +82,22 @@ def get_target_info(check_dir):
     mod_dir = os.path.join(check_dir, "lib/modules/", mod_ver)
 
     mod_list = set()
-    with open(os.path.join(mod_dir, "modules.order"), 'r') as fd:
-        for line in fd:
-            mod_path = line.rstrip()
-            mod_name = os.path.basename(mod_path)
-            mod_name = re.sub("\.ko.*$", "", mod_name)
-            mod_name = re.sub('-', '_', mod_name)
-            mod_list.add((mod_name, '/' + mod_path))
+# TODO
+#     with open(os.path.join(mod_dir, "modules.order"), 'r') as fd:
+#         for line in fd:
+#             mod_path = line.rstrip()
+#             mod_name = os.path.basename(mod_path)
+#             mod_name = re.sub("\.ko.*$", "", mod_name)
+#             mod_name = re.sub('-', '_', mod_name)
+#             mod_list.add((mod_name, mod_path[7:]))
+# #            mod_list.add((mod_name, '/' + mod_path))
 
-#     for root, _, files in os.walk(mod_dir):
-#         for fn in files:
-#             m = builddep.norm_mod(fn)
-#             if m.endswith(".ko"):
-#                 m = m[:-3]
-#                 mod_list.add((m, os.path.join(root[len(mod_dir):], fn)))
+    for root, _, files in os.walk(mod_dir):
+        for fn in files:
+            m = builddep.norm_mod(fn)
+            if m.endswith(".ko"):
+                m = m[:-3]
+                mod_list.add((m, os.path.join(root[len(mod_dir):], fn)))
 
     symtab = []
     with open(os.path.join(check_dir, "boot", "System.map-"+mod_ver), 'r') as fd:
@@ -128,7 +132,6 @@ def load_db(hwconf, devdb_path, log=False):
             if sig.match(key):
                 modlist.append(devdb[sig])
                 found=True
-                #break
         if not found:
             if log:
                 print("Unknown device: ", key)
@@ -185,67 +188,96 @@ def cache_dump(obj, p):
     with open(p, 'wb') as fd:
         pickle.dump(obj, fd)
 
-def check_rmf(f, mod, patched, fdeps, odeps, processed, \
-        relmod_bypass_filter, relmod_filter, func_check):
-    if f in processed:
-        return (f in patched, {f} if (f in patched and ((not func_check) or func_check(f))) else {})
-    processed.add(f)
-
-    newpatched = set()
-    bypasscnt = 0
-    rmflag = fdeps and (f, mod) in fdeps and len(fdeps[(f, mod)]) > 0
-    if not rmflag:
-        return (False, {})
-    for cf, cmod in fdeps[(f, mod)]:
-        if cmod.endswith(".o"):
-            if mod == cmod or cf in patched:
-                continue
-            else:
-                rmflag, rmset = check_rmf(cf, cmod, patched|newpatched, odeps.related(cf), odeps, processed, \
-                        relmod_bypass_filter, relmod_filter, func_check)
-                newpatched.update(rmset)
-                if not rmflag:
-                    break
-        else:
-            # .ko
-            m = re.sub('-', '_', os.path.basename(cmod).split('.')[0])
-            if relmod_bypass_filter and relmod_bypass_filter(m):
-                bypasscnt += 1
-                continue
-            if relmod_filter and relmod_filter(m):
-                rmflag = False
-                break
-    return (rmflag, newpatched)
-
 def check_fdep(fdep_checklist, patch_sym, odeps, \
         relmod_bypass_filter=None, relmod_filter=None, func_check=None, mod_check=None):
     rmfunc_fdep = set()
     rmko_fdep = set()
+    fdep_checklist_ex = fdep_checklist.copy()
+    patch_sym_ex = patch_sym.copy()
 
-    processed = set()
-    for f in fdep_checklist:
-        fdeps = odeps.related(f)
-        if not fdeps:
+    #  populate graph
+    new_fdep_checklist = set()
+    for o,f in fdep_checklist_ex:
+        fdeps = odeps.related(o,f)
+
+        if fdeps is None or len(fdeps) == 0:
+            imports = odeps.imports(o,f)
+            if imports is not None:
+                for sym in imports:
+                    mods = odeps.get_mods(sym)
+                    if mods is not None:
+                        for mod in mods:
+                            new_fdep_checklist.add((mod,sym))
             continue
-        for relf, relmod in fdeps:
-            # check caller
-            rmflag, rmset = check_rmf(relf, relmod, patch_sym|rmfunc_fdep, fdeps, odeps, processed, \
-                    relmod_bypass_filter, relmod_filter, func_check)
-            rmfunc_fdep.update(rmset)
 
-            if not rmflag:
+        for relf, relmod in fdeps:
+            new_fdep_checklist.add((relmod,relf))
+
+            imports = odeps.imports(relmod,relf)
+            if imports is not None:
+                for sym in imports:
+                    mods = odeps.get_mods(sym)
+                    if mods is not None:
+                        for mod in mods:
+                            new_fdep_checklist.add((mod,sym))
+
+            for caller, cmod in fdeps[(relf,relmod)]:
+                new_fdep_checklist.add((cmod,caller))
+
+    fdep_checklist_ex.update(new_fdep_checklist)
+
+    num_patch_syms = len(patch_sym_ex)
+    while True:
+        for o,f in fdep_checklist_ex:
+            fdeps = odeps.related(o,f)
+            if fdeps is None or len(fdeps) == 0:
+                if gen_objdep.is_permanent_symbol(f):
+                    continue
+                if odeps.has_referencer(o, f, patch_sym_ex):
+                    continue
+                patch_sym_ex.add((o,f))
+                if o.endswith(".o"):
+                    rmfunc_fdep.add(f)
+                else:
+                    rmko_fdep.add((f,o))
                 continue
-            if relmod.endswith(".o"):
-                if func_check and func_check(relf):
+    
+            for relf, relmod in fdeps:
+                if fdeps[(relf,relmod)] is None or len(fdeps[(relf,relmod)]) == 0:
+                    if gen_objdep.is_permanent_symbol(relf):
+                        continue
+                    if odeps.has_referencer(relmod, relf, patch_sym_ex):
+                        continue
+                    patch_sym_ex.add((relmod,relf))
+                    if relmod.endswith(".o"):
+                        rmfunc_fdep.add(relf)
+                    else:
+                        rmko_fdep.add((relf,relmod))
                     continue
-                if relf not in patch_sym:
-                    rmfunc_fdep.add(relf)
-            else:
-                assert relmod.endswith(".ko")
-                if mod_check and mod_check(relmod):
-                    continue
-                if relf not in patch_sym:
-                    rmko_fdep.add((relf, relmod))
+    
+                patchable = True
+                for caller, cmod in fdeps[(relf,relmod)]:
+                    if (cmod,caller) not in patch_sym_ex:
+                        patchable = False
+                        break
+    
+                if patchable:
+                    if gen_objdep.is_permanent_symbol(relf):
+                        continue
+                    if odeps.has_referencer(relmod, relf, patch_sym_ex):
+                        continue
+                    patch_sym_ex.add((relmod,relf))
+                    if relmod.endswith(".o"):
+                        rmfunc_fdep.add(relf)
+                    else:
+                        rmko_fdep.add((relf,relmod))
+
+        num = len(patch_sym_ex)
+        if num_patch_syms == num:
+            break
+        else:
+            num_patch_syms = num
+
     return (rmfunc_fdep, rmko_fdep)
 
 def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, cache="/tmp/.cache/forklift", log=False, tag=""):
@@ -256,6 +288,11 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     if log:
         print("Load DB: ", time.time()-prev)
         prev = time.time()
+
+    odeps = cache_load(os.path.join(cache, "objdeps"))
+    if not odeps:
+        odeps = gen_objdep.ObjDeps(linux_src, linux_build, btobj_deps)
+        cache_dump(odeps, os.path.join(cache, "objdeps"))
 
     # all drivers db to check non-public drivers
     alldrv_list = cache_load(os.path.join(cache, "alldrv_list"))
@@ -275,7 +312,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     allmod, symtab = get_target_info(check_dir)
 
     # non-function symbols
-    nonfunc_syms = set([t[2] for t in symtab if t[1] not in ['t', 'T']])
+    nonfunc_syms = set([t[2] for t in symtab if t[1] not in set(['t', 'T', 'w', 'W'])])
 
     # All Mods on disk img
     alldiskmods = set([t[0] for t in allmod])
@@ -329,7 +366,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     allkernfunc = set()
     start_flag = False
     for addr,ty,sym in symtab:
-        if ty in ['T', 't']:
+        if ty in set(['T', 't', 'W', 'w']):
             allkernfunc.add(sym)
         if sym == '__initcall_start':
             start_flag = True
@@ -346,15 +383,18 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                         continue
                     if log:
                         print("native: ", sym, mod, func)
-                    patch_list.add(sym)
+                    if gen_objdep.is_permanent_symbol(sym):
+                        continue
+                    patch_list.add((mod,sym))
                     builtin_mod_remove.add(mod)
                     notfound = False
                     break
             if notfound and (sym.startswith("__initcall__kmod_") or sym.startswith("__initcall_")):
                 skip_list.add(sym)
-    sym_map = {}
+    sym_map = dict()
     for addr,_,sym in symtab:
         sym_map[sym] = addr
+
     if log:
         print("patch builtin list: ", len(patch_list))
         print("skip builtin list: ", len(skip_list))
@@ -365,7 +405,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         func = driver_map[m]
         for sym in skip_list:
             if match_initcall_sig(m, func, sym):
-                allbuiltin.add(sym)
+                allbuiltin.add((m,sym))
                 break
 
     if log:
@@ -389,7 +429,9 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                     func = driver_map[dep]
                 for sym in skip_list:
                     if match_initcall_sig(dep, func, sym):
-                        new_patch_list.add(sym)
+                        if gen_objdep.is_permanent_symbol(sym):
+                            continue
+                        new_patch_list.add((mod,sym))
                         new_builtin_mod_remove.add(dep)
                         break
 
@@ -433,23 +475,38 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     # Function Dependency -- Built-in && Register APIs
     rmfunc_fdep = set()
     rmko_fdep = set()
-    odeps = cache_load(os.path.join(cache, "objdeps"))
-    if not odeps:
-        odeps = gen_objdep.ObjDeps(linux_src, linux_build, btobj_deps)
-        cache_dump(odeps, os.path.join(cache, "objdeps"))
     fdep_checklist = set()
+
     # - collect functions of built-in modules
-    patch_sym = set([initcall_sym2init(x) for x in new_patch_list])
+    patch_sym = set([])
+    for modname,initsym in new_patch_list:
+        sym = initcall_sym2init(initsym)
+        mods = odeps.get_mods(sym)
+        if len(mods) == 1:
+            patch_sym.add((list(mods)[0],sym))
+        else:
+            for mod in mods:
+                if mod.endswith(modname+".o") or m.endswith(modname+".ko"):
+                    patch_sym.add((mod,sym))
+                    break
     fdep_checklist.update(patch_sym)
+
     # - collect registration APIs
     fdep_checklist.update(busreg_apis)
+
     # - collect import symbols from removed .ko
     mod_removed = dep_remove.copy()
     for m in cur_removed_mods:
         mod_removed.update([os.path.join(mod_dir, p) for p in diskmodmaps[m]])
     for m in mod_removed:
         if os.path.exists(m):
-            fdep_checklist.update(checkmodsym.get_sym(m, ['U', 'u']))
+            for sym in checkmodsym.get_sym(m, set(['U'])):
+                exporters = odeps.get_mods(sym, global_only=True)
+                if exporters is None:
+                    continue
+                for exporter in exporters:
+                    if odeps.is_module(exporter):
+                        fdep_checklist.add((exporter, sym))
 
     def relmod_bypass_filter(mod):
         return mod not in new_mod_exists and mod not in builtin_mod_exists
@@ -474,13 +531,11 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
 
     return (new_mod_exists, mod_remove, mod_unknown, patch_list, allmod, allbuiltin, skip_list.union(patch_list), new_mod_remove.difference(mod_remove), new_patch_list.difference(patch_list), new_new_mod_remove.difference(new_mod_remove), set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove), None, None, rmfunc_fdep, rmko_fdep, allkernfunc, builtin_mod_exists, new_builtin_mod_remove)
 
-
-def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[]):
+def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[], initonly=False):
     extract_vmlinux='./extract-vmlinux'
     if not os.path.exists(extract_vmlinux):
         os.system(f"wget https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-vmlinux -O {extract_vmlinux}")
-        stat = os.stat(extract_vmlinux)
-        os.chmod(extract_vmlinux, st.st_mode | stat.S_IEXEC)
+        os.system(f"chmod a+x {extract_vmlinux}")
 
     # find and decompress vmlinuz
     mod_ver = get_kernel_ver(img_mounted)
@@ -493,18 +548,31 @@ def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[]):
     # load sym_map
     sym_tab = get_target_info(img_mounted)[1]
     sym_map = dict()
-    for addr,_,sym in sym_tab:
-        sym_map[sym] = addr
+    for addr,ty,sym in sym_tab:
+        if ty not in set(['T','t','W','w']):
+            continue
+        if sym not in sym_map:
+            sym_map[sym] = addr
+        else:
+            if ty == 'T':
+                sym_map[sym] = addr
 
     patch_set = dict()
-    for sym in patch_list|set(extra):
+    for xsym in patch_list|set(extra):
+        sym = None
+        if type(xsym) is tuple:
+            sym = xsym[1]
+        else:
+            sym = xsym
         if sym.startswith("__initcall_"):
             osym = initcall_sym2init(sym)
-        else:
+        elif not initonly:
             osym = sym
             if filter_key and True in [t in sym for t in filter_key]:
                 continue
-        if osym not in sym_map:
+        else:
+            osym = None
+        if not osym or osym not in sym_map:
             continue
         patch_set[osym] = sym_map[osym] - sym_map['_text']
 
@@ -517,27 +585,34 @@ def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[]):
         patch_ranges.append((sym, disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va))))
 
     with open(vmlinux, 'rb') as fd:
-        data = bytearray(fd.read())
+        data = list(fd.read())
 
     for sym, patch_range in patch_ranges:
+        ret_patched = False
         if not patch_range:
+            continue
+        if gen_objdep.is_permanent_symbol(sym):
             continue
         for poff in patch_range:
             plen = patch_range[poff]
-            if data[poff] == 0xe8: # Ftrace Stub
-                poff += 5
-                plen -= 5
-            if data[poff] == 0xf3 and data[poff+1] == 0x0f and data[poff+2] == 0x1e and data[poff+3] == 0xfa:
-                poff += 4
-                plen -= 4
-
-            if plen > 0:
-                data[poff] = 0xc3
-                for pi in range(1, plen):
+            if not ret_patched:
+                # Skip Ftrace Stub
+                if data[poff] == 0xe8:
+                    poff += 5
+                    plen -= 5
+                if plen > 0:
+                    data[poff] = 0xc3
+                    for pi in range(1, plen):
+                        data[poff+pi] = 0x90
+                    ret_patched = True
+                else:
+                    pass
+            else:
+                for pi in range(plen):
                     data[poff+pi] = 0x90
 
     with open(vmlinux+'.patched', 'wb') as outfd:
-        outfd.write(data)
+        outfd.write(bytes(data))
 
     return vmlinux+'.patched'
 
@@ -596,9 +671,8 @@ def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
                 assert (f.endswith(".cpio"))
                 idx = int(f[:-5].split('-')[-1])-1
             parts[idx] = f
-            if ext in unpack_helper:
+            if ext in unpack_helper and not fspart:
                 fspart = f
-                break
     if not fspart:
         fspart = parts[-1]
     unpackdir = "unpack"
@@ -606,7 +680,7 @@ def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
         shutil.rmtree(unpackdir)
     os.mkdir(unpackdir)
     os.chdir(unpackdir)
-    os.system(f"({unpack_helper[f.split('.')[-1]]} | cpio -id) < {os.path.join('../out', fspart)}")
+    os.system(f"({unpack_helper[fspart.split('.')[-1]]} | cpio -id) < {os.path.join('../out', fspart)}")
     if filter_key:
         rmmods = [m for m in rmmods if True not in [fk in m for fk in filter_key]]
     stat_res = calc_module_count(".", rmmods, ker_ver)
@@ -615,7 +689,7 @@ def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
         with open("./etc/fstab", 'w') as fd:
             fd.write("LABEL=ROOT /sysroot xfs defaults 0 1\n")
             fd.write("LABEL=EFI /boot/efi vfat defaults 0 0\n")
-    os.system(f"find .|cpio -o -H newc|{pack_helper[f.split('.')[-1]]} > ../newrd.img")
+    os.system(f"find .|cpio -o -H newc|{pack_helper[fspart.split('.')[-1]]} > ../newrd.img")
     os.chdir("..")
     data = b""
     for p in parts:
@@ -706,11 +780,9 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                     outfd.write(bytes(kodata))
 
                 if ext == "ko":
-                    # os.system(f"cp {target_mod} {os.path.join(root, mod)}")
-                    print(f"cp {target_mod} {os.path.join(root, mod)}")
+                    os.system(f"cp {target_mod} {os.path.join(root, mod)}")
                 else:
-                    # os.system(f"{pack_helper[ext]} < {target_mod} > {os.path.join(root, mod)}")
-                    print(f"{pack_helper[ext]} < {target_mod} > {os.path.join(root, mod)}")
+                    os.system(f"{pack_helper[ext]} < {target_mod} > {os.path.join(root, mod)}")
 
                 shutil.rmtree(workdir)
 
