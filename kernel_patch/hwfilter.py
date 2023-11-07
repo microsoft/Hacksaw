@@ -190,8 +190,6 @@ def cache_dump(obj, p):
 
 def check_fdep(fdep_checklist, patch_sym, odeps, \
         relmod_bypass_filter=None, relmod_filter=None, func_check=None, mod_check=None):
-    rmfunc_fdep = set()
-    rmko_fdep = set()
     fdep_checklist_ex = fdep_checklist.copy()
     patch_sym_ex = patch_sym.copy()
 
@@ -245,10 +243,6 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                 if odeps.has_referencer(o, f, patch_sym_ex):
                     continue
                 patch_sym_ex.add((o,f))
-                if o.endswith(".o"):
-                    rmfunc_fdep.add(f)
-                else:
-                    rmko_fdep.add((f,o))
                 continue
     
             for relf, relmod in fdeps:
@@ -258,10 +252,6 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
                         continue
                     patch_sym_ex.add((relmod,relf))
-                    if relmod.endswith(".o"):
-                        rmfunc_fdep.add(relf)
-                    else:
-                        rmko_fdep.add((relf,relmod))
                     continue
     
                 patchable = True
@@ -276,16 +266,20 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
                         continue
                     patch_sym_ex.add((relmod,relf))
-                    if relmod.endswith(".o"):
-                        rmfunc_fdep.add(relf)
-                    else:
-                        rmko_fdep.add((relf,relmod))
 
         num = len(patch_sym_ex)
         if num_patch_syms == num:
             break
         else:
             num_patch_syms = num
+
+    rmfunc_fdep = set()
+    rmko_fdep = set()
+    for o,f in patch_sym_ex:
+        if o.endswith(".o"):
+            rmfunc_fdep.add(f)
+        else:
+            rmko_fdep.add((f,o))
 
     return (rmfunc_fdep, rmko_fdep)
 
