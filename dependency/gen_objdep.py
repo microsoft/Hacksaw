@@ -79,6 +79,8 @@ def load_busreg_apis(linux_build, busreg_list):
                 if not line:
                     continue
                 obj, api = line.split()
+                if not obj.endswith(".o.bc"):
+                    obj = obj[:-2] + "o.bc"
                 obj = os.path.join(linux_build, obj[:-3])
                 obj = re.sub('-', '_', obj)
                 busreg_apis.add((obj, api))
