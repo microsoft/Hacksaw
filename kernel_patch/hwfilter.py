@@ -604,6 +604,10 @@ def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[], initonly=Fa
         for poff in patch_range:
             plen = patch_range[poff]
             if not ret_patched:
+                # Skip endbr for ftrace
+                if data[poff] == 0xf3 and data[poff+1] == 0x0f and data[poff+2] == 0x1e and (data[poff+3] == 0xfa or data[poff+3] == 0xfb):
+                    poff += 4
+                    plen -= 4
                 # Skip Ftrace Stub
                 if data[poff] == 0xe8:
                     poff += 5
