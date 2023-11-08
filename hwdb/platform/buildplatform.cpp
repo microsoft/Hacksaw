@@ -1,4 +1,3 @@
-
 #include <map>
 #include <set>
 #include <list>
@@ -6,7 +5,6 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
-#include <stdexcept>
 
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
@@ -21,11 +19,6 @@ static llvm::cl::opt<std::string> InputFile(
         "f",
         llvm::cl::desc("Input bc file, Must be Absolute Path"),
         llvm::cl::init(""));
-
-//static llvm::cl::opt<std::string> InputList(
-//        "l",
-//        llvm::cl::desc("Input file list: each bcfile a line (Each line Must be Absolute Path to the bc file)"),
-//        llvm::cl::init(""));
 
 static llvm::cl::opt<std::string> ModInitDB(
         "i",
@@ -58,19 +51,17 @@ static std::set<std::string> pci_register_func = {
     /*DRM*/
     "drm_legacy_pci_init",
 };
-//static std::string build_dir = "../../linux/build_llvm";
-
-#define DEBUG 0
 
 static std::map<std::string, std::map<std::string, std::string>> modinit_db;
 static std::map<std::string, std::set<std::string>> modcb_db;
 
 template <class T>
 T _get_const_int(llvm::Constant *I) {
+    if (!I)
+        return (T)-1;
     llvm::ConstantInt *ci = llvm::dyn_cast<llvm::ConstantInt>(I);
-    // assert (ci && ci->getBitWidth() == (sizeof(T)*8));
     if (!ci || ci->getBitWidth() != (sizeof(T)*8))
-        throw std::domain_error("get_const_int");
+        return (T)-1;
     return ci->getZExtValue();
 }
 
@@ -83,21 +74,9 @@ void _add(std::ofstream &output, std::string del, bool cond, unsigned bw, uint64
 
 void log_err(std::ofstream &errout, const std::string &inputfile, llvm::Constant *v) {
     errout << inputfile << "\n";
-    for (auto &use : v->uses()) {
-        use->dump();
-    }
 }
 
 llvm::Constant *strip_padding(llvm::Constant *st) {
-    //if (llvm::dyn_cast<llvm::StructType>(pcidesc->getType())->isLiteral()) {
-    //    for (int i = 0; i < pcidesc->getType()->getStructNumElements(); i++) {
-    //        llvm::Type *subtype = pcidesc->getType()->getStructElementType(i);
-    //        if (subtype->getStructName().equals("struct.platform_driver")) {
-    //            pcidesc = pcidesc->getAggregateElement(i);
-    //            break;
-    //        }
-    //    }
-    //}
     if (st->getType()->isStructTy() \
             && llvm::dyn_cast<llvm::StructType>(st->getType())->isLiteral()) {
         st = st->getAggregateElement(0u);
@@ -147,8 +126,11 @@ static unsigned int incbcd(unsigned int *bcd,
 std::string get_const_str(llvm::Constant *buf) {
     if (buf->isNullValue())
         return "";
-    assert (llvm::isa<llvm::ConstantDataArray>(buf));
+    if (!llvm::isa<llvm::ConstantDataArray>(buf))
+        return "";
     llvm::ConstantDataArray *s = llvm::dyn_cast<llvm::ConstantDataArray>(buf);
+    if (!s)
+        return "";
     return s->getAsString().str().c_str();
 }
 
@@ -161,17 +143,16 @@ std::string normalize_str(std::string s, const char *del, const char *rep) {
     return s;
 }
 
-
 void dump_platform_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        //assert (e->getType()->getStructName().equals("struct.platform_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
-        assert (llvm::isa<llvm::ConstantDataArray>(e->getAggregateElement(0u)));
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getAggregateElement(0u)) return;
+        if (!llvm::isa<llvm::ConstantDataArray>(e->getAggregateElement(0u))) return;
         llvm::ConstantDataArray *id = llvm::dyn_cast<llvm::ConstantDataArray>(
                 e->getAggregateElement(0u));
+        if (!id) return;
 
         output << "platform_device_id" << " "
             << entrypoint.c_str() << " "
@@ -183,16 +164,15 @@ void dump_platform_id(llvm::Constant *idtab, std::string entrypoint, std::string
 void dump_of_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.of_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getType()->getStructName().equals("struct.of_device_id")) return;
         std::string name = get_const_str(e->getAggregateElement(0u));
         std::string type = get_const_str(e->getAggregateElement(1u));
         std::string compat = get_const_str(e->getAggregateElement(2u));
-        if (name.empty())   name = "*";
-        if (type.empty())   type = "*";
-        if (compat.empty())   compat = "*";
+        if (name.empty()) name = "*";
+        if (type.empty()) type = "*";
+        if (compat.empty()) compat = "*";
         name = normalize_str(name, " ", "_");
         type = normalize_str(type, " ", "_");
         compat = normalize_str(compat, " ", "_");
@@ -211,13 +191,14 @@ void dump_of_id(llvm::Constant *idtab, std::string entrypoint, std::string modna
 void dump_acpi_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.acpi_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getType()->getStructName().equals("struct.acpi_device_id")) return;
         std::string id = get_const_str(e->getAggregateElement(0u));
+        if (!e->getAggregateElement(2u)) return;
         llvm::ConstantInt *cls = llvm::dyn_cast<llvm::ConstantInt>(e->getAggregateElement(2u));
         llvm::ConstantInt *cls_mask = llvm::dyn_cast<llvm::ConstantInt>(e->getAggregateElement(2u));
+        if (!cls || !cls_mask) return;
 
         if (!id.empty()) {
             output << "acpi_device_id" << " "
@@ -225,8 +206,8 @@ void dump_acpi_id(llvm::Constant *idtab, std::string entrypoint, std::string mod
                 << modname << " "
                 << "acpi*:"<< id << ":*" << "\n";
         } else {
-            assert (cls && cls->getBitWidth() == 32);
-            assert (cls_mask && cls_mask->getBitWidth() == 32);
+            if (! cls || cls->getBitWidth() != 32) return;
+            if (!cls_mask || cls_mask->getBitWidth() != 32) return;
             output << "acpi_device_id" << " "
                 << entrypoint.c_str() << " "
                 << modname << " "
@@ -249,10 +230,9 @@ void dump_acpi_id(llvm::Constant *idtab, std::string entrypoint, std::string mod
 void dump_pci_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.pci_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getType()->getStructName().equals("struct.pci_device_id")) return;
         llvm::Constant *vendor_id = e->getAggregateElement(0u);
         llvm::Constant *device_id = e->getAggregateElement(1u);
         llvm::Constant *subvendor_id = e->getAggregateElement(2u);
@@ -262,19 +242,19 @@ void dump_pci_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
         llvm::Constant *ovride = e->getAggregateElement(7u);
 
         llvm::ConstantInt *vid = llvm::dyn_cast<llvm::ConstantInt>(vendor_id);
-        assert (vid && vid->getBitWidth() == 32);
+        if (!vid) return;
         llvm::ConstantInt *did = llvm::dyn_cast<llvm::ConstantInt>(device_id);
-        assert (did && did->getBitWidth() == 32);
+        if (!did) return;
         llvm::ConstantInt *svid = llvm::dyn_cast<llvm::ConstantInt>(subvendor_id);
-        assert (svid && svid->getBitWidth() == 32);
+        if (!svid) return;
         llvm::ConstantInt *sdid = llvm::dyn_cast<llvm::ConstantInt>(subdevice_id);
-        assert (sdid && sdid->getBitWidth() == 32);
+        if (!sdid) return;
         llvm::ConstantInt *cl = llvm::dyn_cast<llvm::ConstantInt>(cls);
-        assert (cl && cl->getBitWidth() == 32);
+        if (!cl) return;
         llvm::ConstantInt *msk = llvm::dyn_cast<llvm::ConstantInt>(clsmask);
-        assert (msk && msk->getBitWidth() == 32);
+        if (!msk) return;
         llvm::ConstantInt *ovr = llvm::dyn_cast<llvm::ConstantInt>(ovride);
-        assert (ovr && ovr->getBitWidth() == 32);
+        if (!ovr) return;
 
         output << "pci_device_id" << " "
             << entrypoint.c_str() << " "
@@ -350,22 +330,33 @@ void dump_pci_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
 void dump_usb_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.usb_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getType()->getStructName().equals("struct.usb_device_id")) return;
         uint16_t match_flags = _get_const_int<uint16_t>(e->getAggregateElement(0u));
+        if (match_flags == (uint16_t)-1) return;
         uint16_t idVendor = _get_const_int<uint16_t>(e->getAggregateElement(1u));
+        if (idVendor == (uint16_t)-1) return;
         uint16_t idProduct = _get_const_int<uint16_t>(e->getAggregateElement(2u));
+        if (idProduct == (uint16_t)-1) return;
         uint16_t bcdDevice_lo = _get_const_int<uint16_t>(e->getAggregateElement(3u));
+        if (bcdDevice_lo == (uint16_t)-1) return;
         uint16_t bcdDevice_hi = _get_const_int<uint16_t>(e->getAggregateElement(4u));
+        if (bcdDevice_hi == (uint16_t)-1) return;
         uint8_t bDeviceClass = _get_const_int<uint8_t>(e->getAggregateElement(5u));
+        if (bDeviceClass == (uint8_t)-1) return;
         uint8_t bDeviceSubClass = _get_const_int<uint8_t>(e->getAggregateElement(6u));
+        if (bDeviceSubClass == (uint8_t)-1) return;
         uint8_t bDeviceProtocol = _get_const_int<uint8_t>(e->getAggregateElement(7u));
+        if (bDeviceProtocol == (uint8_t)-1) return;
         uint8_t bInterfaceClass = _get_const_int<uint8_t>(e->getAggregateElement(8u));
+        if (bInterfaceClass == (uint8_t)-1) return;
         uint8_t bInterfaceSubClass = _get_const_int<uint8_t>(e->getAggregateElement(9u));
+        if (bInterfaceSubClass == (uint8_t)-1) return;
         uint8_t bInterfaceProtocol = _get_const_int<uint8_t>(e->getAggregateElement(10u));
+        if (bInterfaceProtocol == (uint8_t)-1) return;
         uint8_t bInterfaceNumber = _get_const_int<uint8_t>(e->getAggregateElement(11u));
+        if (bInterfaceNumber == (uint8_t)-1) return;
 
         unsigned int devlo, devhi;
         uint8_t chi, clo, max;
@@ -416,12 +407,12 @@ void dump_usb_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
 void dump_virtio_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        //assert (e->getType()->getStructName().equals("struct.virtio_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
         uint32_t device = _get_const_int<uint32_t>(e->getAggregateElement(0u));
+        if (device == (uint32_t)-1) return;
         uint32_t vendor = _get_const_int<uint32_t>(e->getAggregateElement(1u));
+        if (vendor == (uint32_t)-1) return;
 
         output << "virtio_device_id" << " "
             << entrypoint.c_str() << " "
@@ -439,15 +430,15 @@ void dump_virtio_id(llvm::Constant *idtab, std::string entrypoint, std::string m
 void dump_vmbus_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.hv_vmbus_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getType()->getStructName().equals("struct.hv_vmbus_device_id")) return;
         llvm::Constant *idstruct = e->getAggregateElement(0u);
         llvm::Constant *guid = idstruct->getAggregateElement(0u);
-        assert (guid->getType()->isArrayTy());
+        if (!guid->getType()->isArrayTy()) return;
 
         llvm::ConstantDataArray *guid_data = llvm::dyn_cast<llvm::ConstantDataArray>(guid);
+        if (!guid_data) return;
 
         output << "hv_vmbus_device_id" << " "
             << entrypoint.c_str() << " "
@@ -464,12 +455,11 @@ void dump_vmbus_id(llvm::Constant *idtab, std::string entrypoint, std::string mo
 void dump_xenbus_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.xenbus_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
+        if (!e->getType()->getStructName().equals("struct.xenbus_device_id")) return;
         llvm::Constant *idesc = e->getAggregateElement(0u);
-        assert (idesc->getType()->isArrayTy());
+        if (!idesc->getType()->isArrayTy()) return;
         std::string xendesc = llvm::dyn_cast<llvm::ConstantDataArray>(idesc)->getAsString().str().c_str(); 
 
         output << "xenbus_device_id" << " "
@@ -482,12 +472,10 @@ void dump_xenbus_id(llvm::Constant *idtab, std::string entrypoint, std::string m
 void dump_i2c_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        assert (e->getType()->isStructTy());
-        //assert (e->getType()->getStructName().equals("struct.i2c_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
         llvm::Constant *idesc = e->getAggregateElement(0u);
-        assert (idesc->getType()->isArrayTy());
+        if (!idesc->getType()->isArrayTy()) return;
         std::string name = llvm::dyn_cast<llvm::ConstantDataArray>(idesc)->getAsString().str().c_str(); 
 
         output << "i2c_device_id" << " "
@@ -500,12 +488,11 @@ void dump_i2c_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
 void dump_spi_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
+        if (e->isNullValue()) return;
         if (!e->getType()->isStructTy()) return;
-        assert (e->getType()->isStructTy());
-        assert (e->getType()->getStructName().equals("struct.spi_device_id"));
-        if (e->isNullValue())   break;
+        if (!e->getType()->getStructName().equals("struct.spi_device_id")) return;
         llvm::Constant *idesc = e->getAggregateElement(0u);
-        assert (idesc->getType()->isArrayTy());
+        if (!idesc->getType()->isArrayTy()) return;
         std::string name = llvm::dyn_cast<llvm::ConstantDataArray>(idesc)->getAsString().str().c_str(); 
 
         output << "spi_device_id" << " "
@@ -527,10 +514,10 @@ static void do_input(std::ofstream &output, llvm::Constant *arr, unsigned int mi
     uint64_t bits = sizeof(uint64_t)*8;
     llvm::Constant *e;
     for (i = min; e = arr->getAggregateElement(i/bits); i++) {
-        if (e->isNullValue())   continue;
+        if (e->isNullValue()) continue;
         uint64_t ent = _get_const_int<uint64_t>(e);
+        if (ent == (uint64_t)-1) continue;
         uint64_t nent = ent;
-        //__endian(&ent, &nent, sizeof(nent));
         if (nent & (1L << (i%bits)))
             output << std::uppercase << std::hex << i << ",*";
     }
@@ -539,37 +526,29 @@ static void do_input(std::ofstream &output, llvm::Constant *arr, unsigned int mi
 void dump_input_id(llvm::Constant *idtab, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *e;
     for (unsigned i = 0; e = idtab->getAggregateElement(i); i++) {
-        if (!e->getType()->isStructTy())
-            throw std::domain_error("dump_input_id");
-        // assert (e->getType()->isStructTy());
-        //assert (e->getType()->getStructName().equals("struct.i2c_device_id"));
-        //e->dump();
-        if (e->isNullValue())   break;
+        if (e->isNullValue()) return;
+        if (!e->getType()->isStructTy()) return;
 
         unsigned long flags = _get_const_int<unsigned long>(e->getAggregateElement(0u));
+        if (flags == (unsigned long)-1) return;
         uint16_t bustype = _get_const_int<uint16_t>(e->getAggregateElement(1u));
+        if (bustype == (uint16_t)-1) return;
         uint16_t vendor = _get_const_int<uint16_t>(e->getAggregateElement(2u));
+        if (vendor == (uint16_t)-1) return;
         uint16_t product = _get_const_int<uint16_t>(e->getAggregateElement(3u));
+        if (product == (uint16_t)-1) return;
         uint16_t version = _get_const_int<uint16_t>(e->getAggregateElement(4u));
+        if (version == (uint16_t)-1) return;
 
         llvm::Constant *evbit = e->getAggregateElement(5u);
-        //assert (evbit->getType()->isArrayTy());
         llvm::Constant *keybit = e->getAggregateElement(6u);
-        //assert (keybit->getType()->isArrayTy());
         llvm::Constant *relbit = e->getAggregateElement(7u);
-        //assert (relbit->getType()->isArrayTy());
         llvm::Constant *absbit = e->getAggregateElement(8u);
-        //assert (absbit->getType()->isArrayTy());
         llvm::Constant *mscbit = e->getAggregateElement(9u);
-        //assert (mscbit->getType()->isArrayTy());
         llvm::Constant *ledbit = e->getAggregateElement(10u);
-        //assert (ledbit->getType()->isArrayTy());
         llvm::Constant *sndbit = e->getAggregateElement(11u);
-        //assert (sndbit->getType()->isArrayTy());
         llvm::Constant *ffbit = e->getAggregateElement(12u);
-        //assert (ffbit->getType()->isArrayTy());
         llvm::Constant *swbit = e->getAggregateElement(13u);
-        //assert (swbit->getType()->isArrayTy());
 
 #define INPUT_DEVICE_ID_MATCH_BUS	1
 #define INPUT_DEVICE_ID_MATCH_VENDOR	2
@@ -632,12 +611,15 @@ void _handle_platform(llvm::Constant *desc, std::string entrypoint, std::string 
 void handle_platform(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *devdrv = desc->getAggregateElement(5u);
     llvm::Constant *plat_idtab = desc->getAggregateElement(6u);
-
+    if (devdrv->isNullValue() || plat_idtab->isNullValue()) return;
     if (!llvm::isa<llvm::ConstantPointerNull>(plat_idtab)) {
-        assert (llvm::isa<llvm::GlobalVariable>(plat_idtab));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(plat_idtab)->getInitializer();
+        auto *plat_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(plat_idtab);
+        if (!plat_idtab_gv || !plat_idtab_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = plat_idtab_gv->getInitializer();
+        if (!id_tab) return;
         id_tab = strip_padding(id_tab); // Avoid Literal Struct Type (Padding)
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy()) return;
         dump_platform_id(id_tab, entrypoint, modname, output);
     }
 
@@ -646,19 +628,26 @@ void handle_platform(llvm::Constant *desc, std::string entrypoint, std::string m
 
 void _handle_platform(llvm::Constant *devdrv, std::string entrypoint, std::string modname, std::ofstream &output) {
 
-    if (devdrv->isNullValue())  return;
+    if (devdrv->isNullValue()) return;
 
     devdrv = strip_padding(devdrv);
-    assert (devdrv->getType()->getStructName().equals("struct.device_driver")
-            || devdrv->getType()->getStructName().startswith("struct.device_driver."));
+    if (!devdrv->getType()->getStructName().equals("struct.device_driver")
+            && !devdrv->getType()->getStructName().startswith("struct.device_driver."))
+        return;
 
     llvm::Constant *name = devdrv->getAggregateElement(0u);
     llvm::Constant *of_id = devdrv->getAggregateElement(6u);
     llvm::Constant *acpi_id = devdrv->getAggregateElement(7u);
 
+    if (name->isNullValue() || of_id->isNullValue() || acpi_id->isNullValue())
+        return;
+
     if (!llvm::isa<llvm::ConstantPointerNull>(name)) {
-        assert (llvm::isa<llvm::GlobalVariable>(name));
-        llvm::Constant *namedata = llvm::dyn_cast<llvm::GlobalVariable>(name)->getInitializer();
+        auto *name_gv = llvm::dyn_cast<llvm::GlobalVariable>(name);
+        if (!name_gv || !name_gv->hasInitializer())
+            return;
+        llvm::Constant *namedata = name_gv->getInitializer();
+        if (!namedata) return;
         namedata = strip_padding(namedata);
         std::string namestr = get_const_str(namedata);
         std::replace(namestr.begin(), namestr.end(), ' ', '_');
@@ -668,17 +657,23 @@ void _handle_platform(llvm::Constant *devdrv, std::string entrypoint, std::strin
             << "platform:" << namestr << "\n";
     }
     if (!llvm::isa<llvm::ConstantPointerNull>(of_id)) {
-        assert (llvm::isa<llvm::GlobalVariable>(of_id));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(of_id)->getInitializer();
+        auto *of_id_gv = llvm::dyn_cast<llvm::GlobalVariable>(of_id);
+        if (!of_id_gv || !of_id_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = of_id_gv->getInitializer();
+        if (!id_tab) return;
         id_tab = strip_padding(id_tab);
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy()) return;
         dump_of_id(id_tab, entrypoint, modname, output);
     }
     if (!llvm::isa<llvm::ConstantPointerNull>(acpi_id)) {
-        assert (llvm::isa<llvm::GlobalVariable>(acpi_id));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(acpi_id)->getInitializer();
+        auto *acpi_id_gv = llvm::dyn_cast<llvm::GlobalVariable>(acpi_id);
+        if (!acpi_id_gv || !acpi_id_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = acpi_id_gv->getInitializer();
+        if (!id_tab) return;
         id_tab = strip_padding(id_tab);
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy()) return;
         dump_acpi_id(id_tab, entrypoint, modname, output);
     }
     return;
@@ -686,73 +681,102 @@ void _handle_platform(llvm::Constant *devdrv, std::string entrypoint, std::strin
 
 void handle_pci(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(2u);
+    if (desc_idtab->isNullValue()) return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    if (!llvm::isa<llvm::GlobalVariable>(desc_idtab)) return;
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab) return;
     id_tab = strip_padding(id_tab);
-    assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy()) return;
     dump_pci_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_usb(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(9u);
+    if (desc_idtab->isNullValue())
+        return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab) return;
     id_tab = strip_padding(id_tab);
-    assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy()) return;
     dump_usb_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_usb_serial(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(1u);
+    if (desc_idtab->isNullValue()) return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab) return;
     id_tab = strip_padding(id_tab);
-    assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy()) return;
     dump_usb_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_virtio(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(1u);
+    if (desc_idtab->isNullValue()) return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab) return;
     id_tab = strip_padding(id_tab);
-    assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy()) return;
     dump_virtio_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_vmbus(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(3u);
+    if (desc_idtab->isNullValue()) return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab) return;
     id_tab = strip_padding(id_tab);
-    assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy()) return;
     dump_vmbus_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_xenbus(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(1u);
+    if (desc_idtab->isNullValue()) return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab) return;
     id_tab = strip_padding(id_tab);
-    assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy()) return;
     dump_xenbus_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_i2c(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *devdrv = desc->getAggregateElement(7u);
     llvm::Constant *desc_idtab = desc->getAggregateElement(8u);
-
+    if (devdrv->isNullValue() || desc_idtab->isNullValue()) return;
     if (!llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) {
-        assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+        auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+        if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+        if (!id_tab) return;
         id_tab = strip_padding(id_tab);
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy()) return;
         dump_i2c_id(id_tab, entrypoint, modname, output);
     }
 
@@ -760,26 +784,36 @@ void handle_i2c(llvm::Constant *desc, std::string entrypoint, std::string modnam
     if (devdrv->isNullValue())  return;
 
     devdrv = strip_padding(devdrv);
-    assert (devdrv->getType()->getStructName().equals("struct.device_driver"));
+    if (!devdrv->getType()->getStructName().equals("struct.device_driver"))
+        return;
 
     llvm::Constant *of_id = devdrv->getAggregateElement(6);
     llvm::Constant *acpi_id = devdrv->getAggregateElement(7);
+    if (of_id->isNullValue() || acpi_id->isNullValue())
+        return;
 
     if (!llvm::isa<llvm::ConstantPointerNull>(of_id)) {
-        assert (llvm::isa<llvm::GlobalVariable>(of_id));
+        if (!llvm::isa<llvm::GlobalVariable>(of_id)) return;
         llvm::GlobalVariable *gidtab = llvm::dyn_cast<llvm::GlobalVariable>(of_id);
+        if (!gidtab) return;
         if (gidtab->hasInitializer()) {
             llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(of_id)->getInitializer();
+            if (!id_tab)
+                return;
             id_tab = strip_padding(id_tab);
-            assert (id_tab->getType()->isArrayTy());
+            if (!id_tab->getType()->isArrayTy()) return;
             dump_of_id(id_tab, entrypoint, modname, output);
         }
     }
     if (!llvm::isa<llvm::ConstantPointerNull>(acpi_id)) {
-        assert (llvm::isa<llvm::GlobalVariable>(acpi_id));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(acpi_id)->getInitializer();
+        if (!llvm::isa<llvm::GlobalVariable>(acpi_id)) return;
+        auto *acpi_id_gv = llvm::dyn_cast<llvm::GlobalVariable>(acpi_id);
+        if (!acpi_id_gv || !acpi_id_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = acpi_id_gv->getInitializer();
+        if (!id_tab) return;
         id_tab = strip_padding(id_tab);
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy()) return;
         dump_acpi_id(id_tab, entrypoint, modname, output);
     }
     return;
@@ -788,12 +822,16 @@ void handle_i2c(llvm::Constant *desc, std::string entrypoint, std::string modnam
 void handle_spi(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *devdrv = desc->getAggregateElement(4u);
     llvm::Constant *desc_idtab = desc->getAggregateElement(0u);
-
+    if (devdrv->isNullValue() || desc_idtab->isNullValue())
+        return;
     if (!llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) {
-        assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+        auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+        if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+        if (!id_tab) return;
         id_tab = strip_padding(id_tab);
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy()) return;
         dump_spi_id(id_tab, entrypoint, modname, output);
     }
 
@@ -801,26 +839,39 @@ void handle_spi(llvm::Constant *desc, std::string entrypoint, std::string modnam
     if (devdrv->isNullValue())  return;
 
     devdrv = strip_padding(devdrv);
-    assert (devdrv->getType()->getStructName().equals("struct.device_driver"));
+    if (!devdrv->getType()->getStructName().equals("struct.device_driver"))
+        return;
 
     llvm::Constant *of_id = devdrv->getAggregateElement(6);
     llvm::Constant *acpi_id = devdrv->getAggregateElement(7);
-
+    if (of_id->isNullValue() || acpi_id->isNullValue())
+        return;
     if (!llvm::isa<llvm::ConstantPointerNull>(of_id)) {
-        assert (llvm::isa<llvm::GlobalVariable>(of_id));
+        if (!llvm::isa<llvm::GlobalVariable>(of_id))
+            return;
         llvm::GlobalVariable *gidtab = llvm::dyn_cast<llvm::GlobalVariable>(of_id);
+        if (!gidtab)
+            return;
         if (gidtab->hasInitializer()) {
             llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(of_id)->getInitializer();
+            if (!id_tab)
+                return;
             id_tab = strip_padding(id_tab);
-            assert (id_tab->getType()->isArrayTy());
+            if (!id_tab->getType()->isArrayTy())
+                return;
             dump_of_id(id_tab, entrypoint, modname, output);
         }
     }
     if (!llvm::isa<llvm::ConstantPointerNull>(acpi_id)) {
-        assert (llvm::isa<llvm::GlobalVariable>(acpi_id));
-        llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(acpi_id)->getInitializer();
+        auto *acpi_id_gv = llvm::dyn_cast<llvm::GlobalVariable>(acpi_id);
+        if (!acpi_id_gv || !acpi_id_gv->hasInitializer())
+            return;
+        llvm::Constant *id_tab = acpi_id_gv->getInitializer();
+        if (!id_tab)
+            return;
         id_tab = strip_padding(id_tab);
-        assert (id_tab->getType()->isArrayTy());
+        if (!id_tab->getType()->isArrayTy())
+            return;
         dump_acpi_id(id_tab, entrypoint, modname, output);
     }
     return;
@@ -828,31 +879,52 @@ void handle_spi(llvm::Constant *desc, std::string entrypoint, std::string modnam
 
 void handle_input(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(11u);
+    if (desc_idtab->isNullValue())
+        return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab)
+        return;
     id_tab = strip_padding(id_tab);
-    //assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy())
+        return;
     dump_input_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_misc_acpi(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(0u);
+    if (desc_idtab->isNullValue())
+        return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab)
+        return;
     id_tab = strip_padding(id_tab);
-    //assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy())
+        return;
     dump_acpi_id(id_tab, entrypoint, modname, output);
 }
 
 void handle_acpi(llvm::Constant *desc, std::string entrypoint, std::string modname, std::ofstream &output) {
     llvm::Constant *desc_idtab = desc->getAggregateElement(2u);
+    if (desc_idtab->isNullValue())
+        return;
     if (llvm::isa<llvm::ConstantPointerNull>(desc_idtab)) return;
-    assert (llvm::isa<llvm::GlobalVariable>(desc_idtab));
-    llvm::Constant *id_tab = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab)->getInitializer();
+    auto *desc_idtab_gv = llvm::dyn_cast<llvm::GlobalVariable>(desc_idtab);
+    if (!desc_idtab_gv || !desc_idtab_gv->hasInitializer())
+        return;
+    llvm::Constant *id_tab = desc_idtab_gv->getInitializer();
+    if (!id_tab)
+        return;
     id_tab = strip_padding(id_tab);
-    //assert (id_tab->getType()->isArrayTy());
+    if (!id_tab->getType()->isArrayTy())
+        return;
     dump_acpi_id(id_tab, entrypoint, modname, output);
 }
 
@@ -889,8 +961,6 @@ int driver_dispatch(llvm::Constant *desc, std::string entrypoint, std::string mo
     else
         return -1;
 
-    // DEBUG
-    //assert (!modname.empty());
     return 0;
 }
 
@@ -910,14 +980,13 @@ void dispatch_callinst(llvm::CallBase *call, const std::string &inputfile, std::
     if (argidx >= call->arg_size())
         return;
     llvm::Value *arg = call->getArgOperand(argidx)->stripPointerCasts();
-    if (DEBUG) arg->dump();
+    if (arg == NULL)
+        return;
     if (!llvm::isa<llvm::GlobalVariable>(arg)) {
         errout << inputfile << "\n";
         std::queue<llvm::User*> wq;
         std::set<llvm::User*> seen({call});
         for (auto &use : arg->uses()) {
-            //use->dump();
-            //use.getUser()->dump();
             wq.push(use.getUser());
         }
         while (!wq.empty()) {
@@ -937,20 +1006,20 @@ void dispatch_callinst(llvm::CallBase *call, const std::string &inputfile, std::
                 }
             }
         }
-        if (!llvm::isa<llvm::GlobalVariable>(arg))
+        if (!arg || !llvm::isa<llvm::GlobalVariable>(arg))
             return;
     }
-    assert (llvm::isa<llvm::GlobalVariable>(arg));
+    if (!llvm::isa<llvm::GlobalVariable>(arg))
+        return;
     llvm::GlobalVariable *ptr = llvm::dyn_cast<llvm::GlobalVariable>(arg);
-    if (DEBUG) ptr->dump();
+    if (!ptr)
+        return;
     if (!ptr->hasInitializer())
         return;
     llvm::Constant *pcidesc = ptr->getInitializer();
 
     // Avoid Padding/Literal Struct Type (Maybe just `getAggregateElement(0)`)
-    //llvm::ConstantStruct *desc = llvm::dyn_cast<llvm::ConstantStruct>(pcidesc);
     pcidesc = strip_padding(pcidesc);
-    //llvm::outs() << desc->getType()->isLiteral() << "\n";
 
     if (pcidesc->getType()->isStructTy()) {
         retcode = driver_dispatch(pcidesc, entrypoint, modname, output);
@@ -966,13 +1035,16 @@ void dispatch_callinst(llvm::CallBase *call, const std::string &inputfile, std::
         for (int i = 0; pdrv = pcidesc->getAggregateElement(i); i++) {
             if (!pdrv)   break;
             if (llvm::isa<llvm::ConstantPointerNull>(pdrv)) break;
-            //assert (llvm::isa<llvm::GlobalVariable>(pdrv));
             if (!llvm::isa<llvm::GlobalVariable>(pdrv)) {
                 log_err(errout, inputfile, pdrv);
                 continue;
             }
 
-            drv = strip_padding(llvm::dyn_cast<llvm::GlobalVariable>(pdrv)->getInitializer());
+            auto *pdrv_gv = llvm::dyn_cast<llvm::GlobalVariable>(pdrv);
+            if (!pdrv_gv || !pdrv_gv->hasInitializer())
+                return;
+
+            drv = strip_padding(pdrv_gv->getInitializer());
             retcode = driver_dispatch(drv, entrypoint, modname, output);
             if (retcode)
                 log_err(errout, inputfile, drv);
@@ -999,6 +1071,8 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
                     llvm::CallBase *call = llvm::dyn_cast<llvm::CallBase>(i);
                     if (call->isInlineAsm() || call->isIndirectCall())    continue;
                     //  %call6 = call i32 null(ptr noundef %skb, ptr noundef %data.i)
+                    if (!call->getCalledOperand())
+                        continue;
                     if (llvm::isa<llvm::ConstantPointerNull>(call->getCalledOperand())) continue;
                     if (pci_register_func.find(call->getCalledOperand()->getName().str()) \
                             != pci_register_func.end()) {
@@ -1054,7 +1128,6 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
             errout << inputfile << " " << entrypoint << " " << modname <<"\n";
             return;
         }
-        assert (func);
 
         std::list<llvm::Function*>    wq = {func};
         std::set<llvm::Function*>   processed;
@@ -1063,7 +1136,6 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
             wq.pop_front();
             processed.insert(func);
 
-            if (DEBUG) llvm::outs() << func->getName() << "\n";
             for (auto bb = func->begin(); bb != func->end(); bb++) {
                 for (auto inst = bb->begin(); inst != bb->end(); inst++) {
                     llvm::Instruction *i = &(*inst);
@@ -1071,8 +1143,9 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
                         llvm::CallBase *call = llvm::dyn_cast<llvm::CallBase>(i);
                         if (call->isInlineAsm() || call->isIndirectCall())    continue;
                         //  %call6 = call i32 null(ptr noundef %skb, ptr noundef %data.i)
+                        if (!call->getCalledOperand())
+                            continue;
                         if (llvm::isa<llvm::ConstantPointerNull>(call->getCalledOperand())) continue;
-                        if (DEBUG) call->dump();
 
                         llvm::Function *callee = call->getCalledFunction();
                         if (callee && processed.find(callee) == processed.end())
@@ -1099,7 +1172,6 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
     if (!regcalls.empty() && inputfile.find(".mod.bcmerged") != std::string::npos) {
         for (auto call : regcalls) {
             llvm::outs() << "Fixup " << inputfile <<"\n";
-            //assert (modinit_db[inputfile].size() == 1);
             for (auto cbit : modinit_db[inputfile]) {
                 std::string entrypoint = cbit.first;
                 std::string modname = cbit.second;
@@ -1113,8 +1185,6 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
     if (!regcalls.empty()) {
         errout << inputfile << " :\n";
         for (auto call : regcalls) {
-            //call->getParent()->getParent()->dump();
-            //call->getDebugLoc().dump();
             std::string ts;
             llvm::raw_string_ostream rs(ts);
             call->print(rs);
@@ -1125,8 +1195,6 @@ void processModuleFile(const std::string &inputfile, std::ofstream &output, std:
 
 int main(int argc, char **argv) {
     llvm::cl::ParseCommandLineOptions(argc, argv, "build PCI driver database\n");
-
-    //llvm::outs() << InputFile << " : " << InputList << "\n";
 
     std::ofstream db(OutputFile);
     std::ofstream err("err.log");
@@ -1174,6 +1242,8 @@ int main(int argc, char **argv) {
                             llvm::CallBase *call = llvm::dyn_cast<llvm::CallBase>(i);
                             if (call->isInlineAsm() || call->isIndirectCall())    continue;
                             //  %call6 = call i32 null(ptr noundef %skb, ptr noundef %data.i)
+                            if (!call->getCalledOperand())
+                                continue;
                             if (llvm::isa<llvm::ConstantPointerNull>(call->getCalledOperand())) continue;
                             if (known_apis.find(call->getCalledOperand()->getName().str()) \
                                     != known_apis.end()) {
