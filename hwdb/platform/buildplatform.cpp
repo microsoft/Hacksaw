@@ -126,8 +126,6 @@ static unsigned int incbcd(unsigned int *bcd,
 std::string get_const_str(llvm::Constant *buf) {
     if (buf->isNullValue())
         return "";
-    if (!llvm::isa<llvm::ConstantDataArray>(buf))
-        return "";
     llvm::ConstantDataArray *s = llvm::dyn_cast<llvm::ConstantDataArray>(buf);
     if (!s)
         return "";
@@ -234,12 +232,19 @@ void dump_pci_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
         if (!e->getType()->isStructTy()) return;
         if (!e->getType()->getStructName().equals("struct.pci_device_id")) return;
         llvm::Constant *vendor_id = e->getAggregateElement(0u);
+        if (!vendor_id) return;
         llvm::Constant *device_id = e->getAggregateElement(1u);
+        if (!device_id) return;
         llvm::Constant *subvendor_id = e->getAggregateElement(2u);
+        if (!subvendor_id) return;
         llvm::Constant *subdevice_id = e->getAggregateElement(3u);
+        if (!subdevice_id) return;
         llvm::Constant *cls = e->getAggregateElement(4u);
+        if (!cls) return;
         llvm::Constant *clsmask = e->getAggregateElement(5u);
+        if (!clsmask) return;
         llvm::Constant *ovride = e->getAggregateElement(7u);
+        if (!ovride) return;
 
         llvm::ConstantInt *vid = llvm::dyn_cast<llvm::ConstantInt>(vendor_id);
         if (!vid) return;
@@ -460,6 +465,7 @@ void dump_xenbus_id(llvm::Constant *idtab, std::string entrypoint, std::string m
         if (!e->getType()->getStructName().equals("struct.xenbus_device_id")) return;
         llvm::Constant *idesc = e->getAggregateElement(0u);
         if (!idesc->getType()->isArrayTy()) return;
+        if (!llvm::dyn_cast<llvm::ConstantDataArray>(idesc)) return;
         std::string xendesc = llvm::dyn_cast<llvm::ConstantDataArray>(idesc)->getAsString().str().c_str(); 
 
         output << "xenbus_device_id" << " "
@@ -476,6 +482,7 @@ void dump_i2c_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
         if (!e->getType()->isStructTy()) return;
         llvm::Constant *idesc = e->getAggregateElement(0u);
         if (!idesc->getType()->isArrayTy()) return;
+        if (!llvm::dyn_cast<llvm::ConstantDataArray>(idesc)) return;
         std::string name = llvm::dyn_cast<llvm::ConstantDataArray>(idesc)->getAsString().str().c_str(); 
 
         output << "i2c_device_id" << " "
@@ -493,6 +500,7 @@ void dump_spi_id(llvm::Constant *idtab, std::string entrypoint, std::string modn
         if (!e->getType()->getStructName().equals("struct.spi_device_id")) return;
         llvm::Constant *idesc = e->getAggregateElement(0u);
         if (!idesc->getType()->isArrayTy()) return;
+        if (!llvm::dyn_cast<llvm::ConstantDataArray>(idesc)) return;
         std::string name = llvm::dyn_cast<llvm::ConstantDataArray>(idesc)->getAsString().str().c_str(); 
 
         output << "spi_device_id" << " "
