@@ -13,12 +13,8 @@ sys.path.append(os.path.join(CURDIR, "..", "hwdb", "prepare_database"))
 import modinitcb
 
 module_symbols = set([
-    'ia32_sys_finit_module',
-    'ia32_sys_init_module',
     'module_get',
     'modver_version_show',
-    'x64_sys_finit_module',
-    'x64_sys_init_module',
     'cleanup_module',
     'do_init_module',
     'init_module',
@@ -27,7 +23,7 @@ module_symbols = set([
     'module_put_and_exit',
     'print_modules',
     'retpoline_module_ok',
-    'try_module_ext'
+    'try_module_get'
 ])
 
 def is_module_symbol(sym):
@@ -39,7 +35,8 @@ def is_module_symbol(sym):
 # symbols that shouldn't be removed
 permanent_symbols = set([
     "thermal_init",
-    "acpi_thermal_init"
+    "mdiobus_get_phy",
+    "should_remove_suid"
 ])
 def load_asm_symbols(asm_sym_list):
     with open(asm_sym_list, 'r') as f:
