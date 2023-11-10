@@ -63,7 +63,7 @@ def load_btobj_deps(linux_build, builtin_objdeplist):
             linked = os.path.join(linux_build, linked)
             for o in objs:
                 o = os.path.join(linux_build, o)
-                obj_build_revdeps[o].add(linked)
+                obj_build_revdeps[re.sub('-', '_', o)].add(linked)
     return obj_build_revdeps
 
 def load_busreg_apis(linux_build, busreg_list):
@@ -141,7 +141,6 @@ class ObjDeps(object):
                                 self.fdep_map[mod][sym] = set()
                             self.fdep_map[mod][sym].add(call)
                             self.frevdep_map[call].add((sym, mod))
-
                 elif fname.endswith(".o.symlnk") and not fname.endswith(".mod.o.symlnk"):
                     mod = normalize_object_name(fname, ".o.symlnk", ".o", root)
                     with open(fpath, 'r') as fd:
