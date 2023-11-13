@@ -219,10 +219,13 @@ int main(int argc, char **argv) {
     std::map<std::string, std::set<std::string>> struct_def_cbs;  // .symcbs
     std::map<std::string, std::set<std::string>> func_ext_constant_linkage;  // .symlnk
     std::map<std::string, std::set<std::string>> func_ptr_refer;  // .fptref
-
+                                                                  //
     std::unique_ptr<llvm::Module> module = llvm::parseIRFile(line, ctxerr, context);
-    if (!module)
+    if (!module) {
+      std::ofstream nonbc(line.substr(0, line.rfind('.')) + ".nonbc");
+      nonbc << "nonbc\n";
       continue;
+    }
 
     std::set<llvm::Value*> allfunctions;
     for (auto func = module->begin(); func != module->end(); func++)

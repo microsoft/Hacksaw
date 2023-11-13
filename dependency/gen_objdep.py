@@ -32,24 +32,6 @@ def is_module_symbol(sym):
         return True
     return False
 
-# symbols that shouldn't be removed
-permanent_symbols = set([
-    "thermal_init",
-    "mdiobus_get_phy",
-    "should_remove_suid"
-])
-def load_asm_symbols(asm_sym_list):
-    with open(asm_sym_list, 'r') as f:
-        for line in f:
-            sym_norm = re.sub("^_*", "", line.rstrip())
-            permanent_symbols.add(sym_norm)
-
-def is_permanent_symbol(sym):
-    sym_norm = re.sub("^_*", "", sym)
-    if sym_norm in permanent_symbols:
-        return True
-    return False
-
 def load_btobj_deps(linux_build, builtin_objdeplist):
     obj_build_revdeps = collections.defaultdict(set)
     with open(builtin_objdeplist, 'r') as fd:
@@ -61,10 +43,21 @@ def load_btobj_deps(linux_build, builtin_objdeplist):
             assert (linked[-1] == ':')
             linked = linked[:-1]
             linked = os.path.join(linux_build, linked)
+            linked = re.sub('-', '_', linked)
             for o in objs:
                 o = os.path.join(linux_build, o)
                 obj_build_revdeps[re.sub('-', '_', o)].add(linked)
     return obj_build_revdeps
+
+regapis_skip = set([
+    "register_netdev",
+    "register_netdevice",
+    "unregister_netdev",
+    "unregister_netdevice_many",
+    "unregister_netdevice_queue",
+    "__mdiobus_register",
+    "mdiobus_unregister"
+])
 
 def load_busreg_apis(linux_build, busreg_list):
     busreg_apis = set()
@@ -75,12 +68,9 @@ def load_busreg_apis(linux_build, busreg_list):
                 line = line.strip()
                 if not line:
                     continue
-                obj, api = line.split()
-                if not obj.endswith(".o.bc"):
-                    obj = obj[:-2] + "o.bc"
-                obj = os.path.join(linux_build, obj[:-3])
-                obj = re.sub('-', '_', obj)
-                busreg_apis.add((obj, api))
+                _, api = line.split()
+                if api not in regapis_skip:
+                    busreg_apis.add(api)
     return busreg_apis
 
 def normalize_object_name(fname, curext='.o', newext='.o', curpath=''):
@@ -107,6 +97,7 @@ class ObjDeps(object):
         self.gdat_lnks = collections.defaultdict(dict)
         self.fpref_map = collections.defaultdict(dict)
         self.fpref_revmap = collections.defaultdict(dict)
+        self.non_bc_mods = set([])
 
         for root,_,fs in os.walk(linux_build):
             for fname in fs:
@@ -201,6 +192,9 @@ class ObjDeps(object):
                                 continue
                             assert (os.path.exists(mk))
                             self.drv_map[normalize_object_name(objfile, curpath=linux_build)].add(ko)
+                elif fname.endswith(".o.nonbc"):
+                    mod = normalize_object_name(fname, ".o.nonbc", ".o", root)
+                    self.non_bc_mods.add(mod)
         
         # link function through global variables
         for mod in self.gdat_lnks:
@@ -271,10 +265,15 @@ class ObjDeps(object):
             return None
         return gmods
 
-    def is_module(self, obj):
+    def is_driver(self, obj):
         if obj in self.drv_map:
             return True
         return False
+
+    def is_ir_mod(self, mod):
+        if mod in self.non_bc_mods:
+            return False
+        return True
 
 if __name__ == "__main__":
     sys.exit(0)

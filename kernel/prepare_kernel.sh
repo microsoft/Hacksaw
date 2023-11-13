@@ -46,9 +46,10 @@ make mrproper
 make CC=clang allmodconfig O=$KERNEL_BUILD_PATH
 ./scripts/kconfig/merge_config.sh -O $KERNEL_BUILD_PATH $KERNEL_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT
 make CC=clang olddefconfig O=$KERNEL_BUILD_PATH
-make -j$(nproc) CC=clang KCFLAGS='-w -save-temps=obj' O=$KERNEL_BUILD_PATH
+make -j$(nproc) CC=clang KCFLAGS='-w' O=$KERNEL_BUILD_PATH
 make -j$(nproc) CC=clang INSTALL_MOD_PATH=./mod_install modules_install O=$KERNEL_BUILD_PATH
 
 popd
 
+${CURDIR}/buildir.py $KERNEL_BUILD_PATH
 ${CURDIR}/linkir.py $KERNEL_BUILD_PATH

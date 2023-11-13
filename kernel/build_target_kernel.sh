@@ -4,7 +4,7 @@ if [ $# -eq 2 ]; then
   KERNEL_VER="$1"
   TARGET_CONFIG_FILE=$(realpath $2)
 else
-  echo "Usage: $0 <KERNEL_VER>  <CONFIG_FILE>"
+  echo "Usage: $0 <KERNEL_VER> <CONFIG_FILE>"
   exit 1
 fi
 

@@ -238,7 +238,7 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
         for o,f in fdep_checklist_ex:
             fdeps = odeps.related(o,f)
             if fdeps is None or len(fdeps) == 0:
-                if gen_objdep.is_permanent_symbol(f):
+                if not odeps.is_ir_mod(o):
                     continue
                 if odeps.has_referencer(o, f, patch_sym_ex):
                     continue
@@ -246,9 +246,9 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                 continue
     
             for relf, relmod in fdeps:
+                if not odeps.is_ir_mod(relmod):
+                    continue
                 if fdeps[(relf,relmod)] is None or len(fdeps[(relf,relmod)]) == 0:
-                    if gen_objdep.is_permanent_symbol(relf):
-                        continue
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
                         continue
                     patch_sym_ex.add((relmod,relf))
@@ -256,13 +256,11 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
     
                 patchable = True
                 for caller, cmod in fdeps[(relf,relmod)]:
-                    if (cmod,caller) not in patch_sym_ex:
+                    if not odeps.is_ir_mod(cmod) or (cmod,caller) not in patch_sym_ex:
                         patchable = False
                         break
     
                 if patchable:
-                    if gen_objdep.is_permanent_symbol(relf):
-                        continue
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
                         continue
                     patch_sym_ex.add((relmod,relf))
@@ -386,8 +384,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                         continue
                     if log:
                         print("native: ", sym, mod, func)
-                    if gen_objdep.is_permanent_symbol(sym):
-                        continue
                     patch_list.add((mod,sym))
                     builtin_mod_remove.add(mod)
                     notfound = False
@@ -433,8 +429,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                 func = driver_map[dep]
             for sym in skip_list:
                 if not match_initcall_sig(dep, func, sym):
-                    continue
-                if gen_objdep.is_permanent_symbol(sym):
                     continue
                 new_patch_list.add((mod,sym))
                 new_builtin_mod_remove.add(dep)
@@ -499,7 +493,19 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     fdep_checklist.update(patch_sym)
 
     # - collect registration APIs
-    fdep_checklist.update(busreg_apis)
+    busreg_apis_with_mod = set([])
+    for sym in busreg_apis:
+        mods = odeps.get_mods(sym, global_only=True)
+        if mods is None:
+            continue
+        if len(mods) == 1:
+            busreg_apis_with_mod.add((list(mods)[0],sym))
+        else:
+            for m in mods:
+                if odeps.is_driver(m):
+                    busreg_apis_with_mod.add((m,sym))
+                    break
+    fdep_checklist.update(busreg_apis_with_mod)
 
     # - collect import symbols from removed .ko
     mod_removed = dep_remove.copy()
@@ -513,7 +519,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
             if exporters is None:
                 continue
             for exporter in exporters:
-                if odeps.is_module(exporter):
+                if odeps.is_driver(exporter):
                     fdep_checklist.add((exporter, sym))
 
     def relmod_bypass_filter(mod):
@@ -598,8 +604,6 @@ def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[], initonly=Fa
     for sym, patch_range in patch_ranges:
         ret_patched = False
         if not patch_range:
-            continue
-        if gen_objdep.is_permanent_symbol(sym):
             continue
         for poff in patch_range:
             plen = patch_range[poff]
@@ -811,7 +815,6 @@ def remove_module(check_dir, rmmods, mod_ver=None):
             if m in rmmods or re.sub('-', '_', m) in rmmods:
                 drv_path = os.path.join(root, mod)
                 os.unlink(drv_path)
-#                os.rename(drv_path, drv_path + '.hacksawed')
 
     os.system(f"depmod -a -b {check_dir} {mod_ver}")
     

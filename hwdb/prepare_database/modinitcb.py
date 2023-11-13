@@ -288,10 +288,10 @@ def get_bcmap(modinit_map, linux_src, linux_build):
                                 for cb, alias in modinit_map[key]:
                                     modcb[tag].add((cb, key, alias))
                                     print(os.path.join(linux_build, key))
-                                    if (not os.path.exists(os.path.join(linux_build, key[:-2]+'.o.bc'))):
+                                    if (not os.path.exists(os.path.join(linux_build, key[:-2]+'.bc'))):
                                         nobc.add(key)
                                     else:
-                                        bclist.add(os.path.join(linux_build, key[:-2]+'.o.bc'))
+                                        bclist.add(os.path.join(linux_build, key[:-2]+'.bc'))
                             #break
             else:
                 continue

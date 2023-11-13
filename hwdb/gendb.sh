@@ -16,11 +16,12 @@ KERNEL_SRC_PATH="$SRCDIR/linux-$KERNEL_VER/"
 KERNEL_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER/"
 KERNELRELEASE=$(cat ${KERNEL_BUILD_PATH}/include/config/kernel.release 2> /dev/null)
 
+mkdir -p $OUTPUT_PATH
+
 ${CURDIR}/prepare_database/prepare_database.sh ${KERNEL_SRC_PATH} ${KERNEL_BUILD_PATH} ${OUTPUT_PATH}
 
 ${CURDIR}/build.sh
 
-${BUILDDIR}/platform/callgraph -f ${OUTPUT_PATH}/allbc.list
 ${BUILDDIR}/platform/platformdb \
     -i ${OUTPUT_PATH}/modinit.db \
     -a ${KERNEL_BUILD_PATH}/mod_install/lib/modules/${KERNELRELEASE}/modules.alias \

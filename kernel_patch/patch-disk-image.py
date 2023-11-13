@@ -151,10 +151,6 @@ if __name__ == '__main__':
         sys.exit(1)
     btobj_deps = gen_objdep.load_btobj_deps(args.kernel_build, builtin_objdeplist)
 
-    asm_sym_list = os.path.join(args.db_path, "asmsym.list")
-    if os.path.exists(asm_sym_list):
-        gen_objdep.load_asm_symbols(asm_sym_list)
-
     busreg_lists = [
             os.path.join(args.db_path, "bus-regfuns.db"),
             os.path.join(args.db_path, "class-regfuns.db"),
