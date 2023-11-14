@@ -242,6 +242,8 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     continue
                 if odeps.has_referencer(o, f, patch_sym_ex):
                     continue
+                if odeps.is_inlined(o, f):
+                    continue
                 patch_sym_ex.add((o,f))
                 continue
     
@@ -250,6 +252,8 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     continue
                 if fdeps[(relf,relmod)] is None or len(fdeps[(relf,relmod)]) == 0:
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
+                        continue
+                    if odeps.is_inlined(relmod, relf):
                         continue
                     patch_sym_ex.add((relmod,relf))
                     continue
@@ -262,6 +266,8 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
     
                 if patchable:
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
+                        continue
+                    if odeps.is_inlined(relmod, relf):
                         continue
                     patch_sym_ex.add((relmod,relf))
 

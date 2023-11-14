@@ -19,7 +19,7 @@ $ROOTDIR/kernel/build_target_kernel.sh $KERNEL_VER $TARGET_CONFIG_FILE
 
 mkdir -p $OUTPUT_PATH
 
-${CURDIR}/build.sh
+${ROOTDIR}/hwdb/build.sh
 rm -f ${KERNEL_TARGET_BUILD_PATH}/vmlinux.o
 find $KERNEL_TARGET_BUILD_PATH -name "*.bc" > $BCLIST
 ${BUILDDIR}/platform/callgraph -f $BCLIST

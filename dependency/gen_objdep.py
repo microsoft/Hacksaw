@@ -98,6 +98,8 @@ class ObjDeps(object):
         self.fpref_map = collections.defaultdict(dict)
         self.fpref_revmap = collections.defaultdict(dict)
         self.non_bc_mods = set([])
+        self.frevdep_map_noinline = collections.defaultdict(dict)
+        self.inlined = collections.defaultdict(set)
 
         for root,_,fs in os.walk(linux_build):
             for fname in fs:
@@ -132,6 +134,28 @@ class ObjDeps(object):
                                 self.fdep_map[mod][sym] = set()
                             self.fdep_map[mod][sym].add(call)
                             self.frevdep_map[call].add((sym, mod))
+                elif fname.endswith(".o.impnoin") and not fname.endswith(".mod.o.impnoin"):
+                    mod = normalize_object_name(fname, ".o.impnoin", ".o", root)
+                    with open(fpath, 'r') as fd:
+                        data = fd.read()
+                        localsyms = set([])
+                        for line in data.strip().split('\n'):
+                            if not line:
+                                continue
+                            sym, call = line.strip().split(' : ')
+                            if is_module_symbol(sym) or is_module_symbol(call):
+                                continue
+                            localsyms.add(sym)
+                        for line in data.strip().split('\n'):
+                            if not line:
+                                continue
+                            sym, call = line.strip().split(' : ')
+                            if is_module_symbol(sym) or is_module_symbol(call):
+                                continue
+                            if sym != call and call in localsyms:
+                                if call not in self.frevdep_map_noinline[mod]:
+                                    self.frevdep_map_noinline[mod][call] = set()
+                                self.frevdep_map_noinline[mod][call].add(sym)
                 elif fname.endswith(".o.symlnk") and not fname.endswith(".mod.o.symlnk"):
                     mod = normalize_object_name(fname, ".o.symlnk", ".o", root)
                     with open(fpath, 'r') as fd:
@@ -195,6 +219,10 @@ class ObjDeps(object):
                 elif fname.endswith(".o.nonbc"):
                     mod = normalize_object_name(fname, ".o.nonbc", ".o", root)
                     self.non_bc_mods.add(mod)
+                elif fname.endswith(".o"):
+                    if not os.path.exists(fpath+".bc"):
+                        mod = normalize_object_name(fname, ".o", ".o", root)
+                        self.non_bc_mods.add(mod)
         
         # link function through global variables
         for mod in self.gdat_lnks:
@@ -207,6 +235,20 @@ class ObjDeps(object):
                             self.fdep_map[mod][func] = set()
                         self.fdep_map[mod][func].add(cb)
                         self.frevdep_map[cb].add((func, mod))
+
+        for mod in self.frevdep_map_noinline:
+            for called in self.frevdep_map_noinline[mod]:
+                if called not in self.frevdep_map:
+                    self.inlined[mod].add(called)
+                else:
+                    syms_with_inline = set([])
+                    for s,m in self.frevdep_map[called]:
+                        if m == mod:
+                            syms_with_inline.add(s)
+                    for sym in self.frevdep_map_noinline[mod][called]:
+                        if sym not in syms_with_inline:
+                            self.inlined[mod].add(called)
+                            break
 
     def imports(self, mod, sym):
         if mod not in self.import_table:
@@ -274,6 +316,11 @@ class ObjDeps(object):
         if mod in self.non_bc_mods:
             return False
         return True
+
+    def is_inlined(self, mod, sym):
+        if sym in self.inlined[mod]:
+            return True
+        return False
 
 if __name__ == "__main__":
     sys.exit(0)
