@@ -12,16 +12,24 @@ CURDIR=$(dirname $(realpath $0))
 ROOTDIR=$(dirname ${CURDIR})
 BUILDDIR="${ROOTDIR}/build/"
 KERNEL_TARGET_BUILD_PATH="$BUILDDIR/linux-${KERNEL_VER}-target/"
+KERNEL_NOINLINE_BUILD_PATH="$BUILDDIR/linux-${KERNEL_VER}-noinline/"
 OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
-BCLIST="${OUTPUT_PATH}/target-allbc.list"
+TARGET_BCLIST="${OUTPUT_PATH}/target-allbc.list"
+NOINLINE_BCLIST="${OUTPUT_PATH}/noinline-allbc.list"
 
-$ROOTDIR/kernel/build_target_kernel.sh $KERNEL_VER $TARGET_CONFIG_FILE
+$ROOTDIR/kernel/build_target_kernel.sh $KERNEL_VER $TARGET_CONFIG_FILE NOINLINE
 
 mkdir -p $OUTPUT_PATH
 
 ${ROOTDIR}/hwdb/build.sh
 rm -f ${KERNEL_TARGET_BUILD_PATH}/vmlinux.o
-find $KERNEL_TARGET_BUILD_PATH -name "*.bc" > $BCLIST
-${BUILDDIR}/platform/callgraph -f $BCLIST
+find $KERNEL_TARGET_BUILD_PATH -name "*.bc" > $TARGET_BCLIST
+${BUILDDIR}/platform/callgraph -f $TARGET_BCLIST
+
+if [ -d "KERNEL_NOINLINE_BUILD_PATH" ]; then
+  find $KERNEL_NOINLINE_BUILD_PATH -name "*.bc" > $NOINLINE_BCLIST
+  ${BUILDDIR}/platform/callgraph -f $NOINLINE_BCLIST
+  ${CURDIR}/copy_noinline_imptab.sh $KERNEL_NOINLINE_BUILD_PATH $KERNEL_TARGET_BUILD_PATH
+fi
 
 ${ROOTDIR}/hwdb/prepare_database/gen_objdep.sh $KERNEL_TARGET_BUILD_PATH
