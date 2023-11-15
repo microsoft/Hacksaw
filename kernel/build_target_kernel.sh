@@ -1,10 +1,17 @@
 #!/bin/bash
-
-if [ $# -eq 2 ]; then
+if [ $# -eq 2 ] || [ $# -eq 3 ]; then
   KERNEL_VER="$1"
   TARGET_CONFIG_FILE=$(realpath $2)
+  if [ $# -eq 3 ]; then
+    NOINLINE="$3"
+  fi
 else
-  echo "Usage: $0 <KERNEL_VER> <CONFIG_FILE>"
+  echo "Usage: $0 <KERNEL_VER> <CONFIG_FILE> [NOINLINE]"
+  exit 1
+fi
+
+if [ ! -e "$TARGET_CONFIG_FILE" ]; then
+  echo "$TARGET_CONFIG_FILE does not exist."
   exit 1
 fi
 
@@ -15,12 +22,14 @@ BUILDDIR="${ROOTDIR}/build/"
 
 KERNEL_SRC_PATH="$SRCDIR/linux-$KERNEL_VER/"
 KERNEL_TARGET_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER-target/"
+KERNEL_NOINLINE_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER-noinline/"
 
 KERNEL_CONF_FRAGMENT="/tmp/temp.kconfig.fragment"
-cat "${CURDIR}/hacksaw.kconfig.fragment" "${CURDIR}/nosig.kconfig.fragment" > $KERNEL_CONF_FRAGMENT
+cat "${CURDIR}/hacksaw.kconfig.fragment" "${CURDIR}/nosig.kconfig.fragment" | sort | uniq > $KERNEL_CONF_FRAGMENT
 
 mkdir -p $SRCDIR
 mkdir -p $KERNEL_TARGET_BUILD_PATH
+mkdir -p $KERNEL_NOINLINE_BUILD_PATH
 
 if [ ! -d "$KERNEL_SRC_PATH" ]; then
   wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ -C $SRCDIR
@@ -41,11 +50,22 @@ make mrproper
 cp $TARGET_CONFIG_FILE $KERNEL_TARGET_BUILD_PATH/.config
 ./scripts/kconfig/merge_config.sh -O $KERNEL_TARGET_BUILD_PATH $KERNEL_TARGET_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT
 make CC=clang olddefconfig O=$KERNEL_TARGET_BUILD_PATH
-make -j$(nproc) CC=clang KCFLAGS='-w' O=$KERNEL_TARGET_BUILD_PATH
+make CC=clang -j$(nproc) KCFLAGS='-w' vmlinux modules O=$KERNEL_TARGET_BUILD_PATH
 make -j$(nproc) CC=clang INSTALL_MOD_PATH=./mod_install modules_install O=$KERNEL_TARGET_BUILD_PATH
+
+if [ ! -z "$NOINLINE" ]; then
+  make mrproper
+  cp $TARGET_CONFIG_FILE $KERNEL_NOINLINE_BUILD_PATH/.config
+  ./scripts/kconfig/merge_config.sh -O $KERNEL_NOINLINE_BUILD_PATH $KERNEL_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT
+  make CC=clang olddefconfig O=$KERNEL_NOINLINE_BUILD_PATH
+  make CC=clang -j$(nproc) KCFLAGS='-w -fno-inline-functions -fno-inline-small-functions -fno-inline-functions-called-once -U__OPTIMIZE__' vmlinux modules O=$KERNEL_NOINLINE_BUILD_PATH
+fi
 
 popd
 
 rm -f $KERNEL_CONF_FRAGMENT
 
 ${CURDIR}/buildir.py $KERNEL_TARGET_BUILD_PATH
+if [ ! -z "$NOINLINE" ]; then
+  ${CURDIR}/buildir.py $KERNEL_NOINLINE_BUILD_PATH
+fi

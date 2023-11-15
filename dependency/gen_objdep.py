@@ -49,16 +49,6 @@ def load_btobj_deps(linux_build, builtin_objdeplist):
                 obj_build_revdeps[re.sub('-', '_', o)].add(linked)
     return obj_build_revdeps
 
-regapis_skip = set([
-    "register_netdev",
-    "register_netdevice",
-    "unregister_netdev",
-    "unregister_netdevice_many",
-    "unregister_netdevice_queue",
-    "__mdiobus_register",
-    "mdiobus_unregister"
-])
-
 def load_busreg_apis(linux_build, busreg_list):
     busreg_apis = set()
     for ln in busreg_list:
@@ -69,8 +59,6 @@ def load_busreg_apis(linux_build, busreg_list):
                 if not line:
                     continue
                 _, api = line.split()
-                if api not in regapis_skip:
-                    busreg_apis.add(api)
     return busreg_apis
 
 def normalize_object_name(fname, curext='.o', newext='.o', curpath=''):
