@@ -1,5 +1,4 @@
 #!/bin/bash
-#
 if [ $# -eq 2 ]; then
   KERNEL_VER="$1"
   TARGET_CONFIG_FILE=$(realpath $2)
@@ -26,7 +25,7 @@ rm -f ${KERNEL_TARGET_BUILD_PATH}/vmlinux.o
 find $KERNEL_TARGET_BUILD_PATH -name "*.bc" > $TARGET_BCLIST
 ${BUILDDIR}/platform/callgraph -f $TARGET_BCLIST
 
-if [ -d "KERNEL_NOINLINE_BUILD_PATH" ]; then
+if [ -d "$KERNEL_NOINLINE_BUILD_PATH" ]; then
   find $KERNEL_NOINLINE_BUILD_PATH -name "*.bc" > $NOINLINE_BCLIST
   ${BUILDDIR}/platform/callgraph -f $NOINLINE_BCLIST
   ${CURDIR}/copy_noinline_imptab.sh $KERNEL_NOINLINE_BUILD_PATH $KERNEL_TARGET_BUILD_PATH

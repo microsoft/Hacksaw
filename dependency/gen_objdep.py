@@ -238,6 +238,13 @@ class ObjDeps(object):
                             self.inlined[mod].add(called)
                             break
 
+        for mod in self.frevdep_map_noinline:
+            for called in self.frevdep_map_noinline[mod]:
+                for sym in self.frevdep_map_noinline[mod][called]:
+                    if sym in self.fdep_map[mod] and called in self.frevdep_map and called not in self.fdep_map[mod][sym]:
+                        self.fdep_map[mod][sym].add(called)
+                        self.frevdep_map[called].add((sym,mod))
+
     def imports(self, mod, sym):
         if mod not in self.import_table:
             return None
@@ -304,11 +311,6 @@ class ObjDeps(object):
         if mod in self.non_bc_mods:
             return False
         return True
-
-    def is_inlined(self, mod, sym):
-        if sym in self.inlined[mod]:
-            return True
-        return False
 
 if __name__ == "__main__":
     sys.exit(0)
