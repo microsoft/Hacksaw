@@ -15,11 +15,13 @@ RUN apt update \
     libssl-dev \
     libelf-dev \
     make \
+    cmake \
     file \
     bc \
     cpio \
+    clang-15 \
     wget \
-    libguestfs-tools \
+    kmod \
     bzip2 \
     gzip \
     lzop \
@@ -28,9 +30,19 @@ RUN apt update \
     zstd \
   && pip install --upgrade pip \
   && pip install \
+    z3-solver \
+    kmax \
     psutil \
     pyelftools \
     capstone
+
+RUN update-alternatives \
+  --install /usr/bin/clang clang /usr/bin/clang-15 100 \
+  --slave /usr/bin/clang++ clang++ /usr/bin/clang++-15 \
+  --slave /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-15 \
+  --slave /usr/bin/llvm-link llvm-link /usr/bin/llvm-link-15 \
+  --slave /usr/bin/llvm-ar llvm-ar /usr/bin/llvm-ar-15 \
+  --slave /usr/bin/opt opt /usr/bin/opt-15
 
 RUN groupadd -g ${USER_ID} hacksaw
 RUN useradd -u ${USER_ID} -g ${USER_ID} -m hacksaw
@@ -38,6 +50,9 @@ RUN useradd -u ${USER_ID} -g ${USER_ID} -m hacksaw
 RUN mkdir -p /hacksaw
 WORKDIR /hacksaw
 
-COPY ./entrypoint.sh /
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
+COPY ./hacksaw.sh /
+COPY ./prepare.sh /
+COPY ./analyze.sh /
+COPY ./patch.sh /
+RUN chmod +x /*.sh
+ENTRYPOINT ["/hacksaw.sh"]
