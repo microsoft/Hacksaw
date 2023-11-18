@@ -72,7 +72,6 @@ def get_initrd(check_dir):
     if os.path.exists(initrd):
         return initrd
     
-    assert (False)
     return None
 
 def get_target_info(check_dir):
@@ -242,8 +241,6 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     continue
                 if odeps.has_referencer(o, f, patch_sym_ex):
                     continue
-                if odeps.is_inlined(o, f):
-                    continue
                 patch_sym_ex.add((o,f))
                 continue
     
@@ -252,8 +249,6 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     continue
                 if fdeps[(relf,relmod)] is None or len(fdeps[(relf,relmod)]) == 0:
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
-                        continue
-                    if odeps.is_inlined(relmod, relf):
                         continue
                     patch_sym_ex.add((relmod,relf))
                     continue
@@ -266,8 +261,6 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
     
                 if patchable:
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
-                        continue
-                    if odeps.is_inlined(relmod, relf):
                         continue
                     patch_sym_ex.add((relmod,relf))
 
@@ -672,6 +665,9 @@ pack_helper = {
         }
 def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
     initrd = get_initrd(check_dir)
+    if not initrd:
+        return
+    initrd = os.path.realpath(initrd)
     ker_ver = get_kernel_ver(check_dir)
     tmprd = tempfile.mkdtemp(prefix='ramfs_')
     cur_cwd = os.getcwd()
@@ -802,7 +798,7 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                     outfd.write(bytes(kodata))
 
                 if ext == "ko":
-                    os.system(f"cp {target_mod} {os.path.join(root, mod)}")
+                    shutil.copy2(target_mod, os.path.join(root, mod))
                 else:
                     os.system(f"{pack_helper[ext]} < {target_mod} > {os.path.join(root, mod)}")
 
@@ -823,7 +819,6 @@ def remove_module(check_dir, rmmods, mod_ver=None):
                 os.unlink(drv_path)
 
     os.system(f"depmod -a -b {check_dir} {mod_ver}")
-    
 
 def calc_module_size(check_dir, rmmods, mod_ver=None):
     ## Remove Drivers in RootFS

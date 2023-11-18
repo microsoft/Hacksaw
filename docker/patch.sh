@@ -1,12 +1,15 @@
 #!/bin/bash
 
 usage() {
-  echo "Usage: hacksaw patch -i <system image path> -p <hardware profile file>" 1>&2
+  echo "Usage: hacksaw patch -k <kernel version> -i <system image path> -p <hardware profile file>" 1>&2
   exit 1
 }
 
-while getopts ":i:c:" o; do
+while getopts ":k:i:p:" o; do
   case "${o}" in
+    k)
+      kerver=${OPTARG}
+      ;;
     i)
       sysimg=${OPTARG}
       ;;
@@ -20,15 +23,15 @@ while getopts ":i:c:" o; do
 done
 shift $((OPTIND-1))
 
-if [ -z "${sysimg}" ] || [ -z "${profile}" ]; then
+if [ -z "${kerver}" ] || [ -z "${sysimg}" ] || [ -z "${profile}" ]; then
   usage
 fi
 
 ROOTDIR=$(dirname $(realpath $0))/hacksaw
 BUILDDIR="${ROOTDIR}/build/"
-OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}/"
-KERNEL_SRC_PATH="${ROOTDIR}/kernel/src/linux-${KERNEL_VER}/"
-KERNEL_BUILD_PATH="$BUILDDIR/linux-${KERNEL_VER}-target/"
+OUTPUT_PATH="${ROOTDIR}/out/${kerver}/"
+KERNEL_SRC_PATH="${ROOTDIR}/kernel/src/linux-${kerver}/"
+KERNEL_BUILD_PATH="$BUILDDIR/linux-${kerver}-target/"
 
 ${ROOTDIR}/kernel_patch/patch-disk-image.py -k ${KERNEL_SRC_PATH} -b ${KERNEL_BUILD_PATH} -d ${OUTPUT_PATH} -o ${OUTPUT_PATH} \
   -i $sysimg -p $profile

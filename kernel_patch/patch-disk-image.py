@@ -30,6 +30,9 @@ def parse_arguments(cli_args = None):
                         help='directory to find dependency DBs')
     parser.add_argument('-o', '--output-path', action='store', required=True,
                         help='output path')
+    parser.add_argument('-g', '--guestmount', action='store_true',
+                        help='use guestmount to access disk image')
+    parser.set_defaults(guestmount=False)
     return parser.parse_args(args=cli_args)
 
 def unmount_image(img_mounted):
@@ -73,8 +76,6 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
     builtin_dep = set()
     mod_builtin_dep = set()
     noentry = set()
-    coremod = set()
-    coredep = set()
     fdep_func = set()
     fdep_ko = set()
     allkernfunc = set()
@@ -92,15 +93,13 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
     builtin_dep.update(tup[8])
     mod_builtin_dep.update(tup[9])
     noentry.update(tup[10])
-    # coremod.update(tup[11])
-    # coredep.update(tup[12])
     fdep_func.update(tup[13])
     fdep_ko.update(tup[14])
     allkernfunc.update(tup[15])
     allbtdrv = tup[16]
     rmbtdrv = tup[17]
 
-    return (db_match, rm, unk, bi_rm, allmod, bi_match, allbuiltin, mod_dep, builtin_dep, mod_builtin_dep, noentry, coremod, coredep, fdep_func, fdep_ko, allkernfunc, allbtdrv, rmbtdrv)
+    return (db_match, rm, unk, bi_rm, allmod, bi_match, allbuiltin, mod_dep, builtin_dep, mod_builtin_dep, noentry,  fdep_func, fdep_ko, allkernfunc, allbtdrv, rmbtdrv)
 
 
 def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build):
@@ -166,13 +165,17 @@ if __name__ == '__main__':
         print(hwdb, "does not exists", file=sys.stderr)
         sys.exit(1)
 
-    img_mounted = mount_image(diskimg)
+    if args.guestmount:
+        img_mounted = mount_image(diskimg)
+    else:
+        img_mounted = diskimg
 
-    _, rm, _, bi_rm, _, _, _, mod_dep, builtin_dep, mod_builtin_dep, noentry, _, _, fdep_func, fdep_ko, _, _, _ = \
+    _, rm, _, bi_rm, _, _, _, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, _, _, _ = \
         analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, hwprof, hwdb)
 
     patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build)
 
-    unmount_image(img_mounted)
+    if args.guestmount:
+        unmount_image(img_mounted)
 
     sys.exit(0)
