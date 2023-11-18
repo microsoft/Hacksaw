@@ -1205,7 +1205,7 @@ int main(int argc, char **argv) {
     llvm::cl::ParseCommandLineOptions(argc, argv, "build PCI driver database\n");
 
     std::ofstream db(OutputFile);
-    std::ofstream err("err.log");
+    std::ofstream err("/tmp/platform-err.log");
 
     if (!ModInitDB.empty()) {
         std::ifstream moddb(ModInitDB);

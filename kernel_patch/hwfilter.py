@@ -81,16 +81,6 @@ def get_target_info(check_dir):
     mod_dir = os.path.join(check_dir, "lib/modules/", mod_ver)
 
     mod_list = set()
-# TODO
-#     with open(os.path.join(mod_dir, "modules.order"), 'r') as fd:
-#         for line in fd:
-#             mod_path = line.rstrip()
-#             mod_name = os.path.basename(mod_path)
-#             mod_name = re.sub("\.ko.*$", "", mod_name)
-#             mod_name = re.sub('-', '_', mod_name)
-#             mod_list.add((mod_name, mod_path[7:]))
-# #            mod_list.add((mod_name, '/' + mod_path))
-
     for root, _, files in os.walk(mod_dir):
         for fn in files:
             m = builddep.norm_mod(fn)
@@ -283,11 +273,7 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
 def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, cache="/tmp/.cache/forklift", log=False, tag=""):
     if not os.path.exists(cache):
         os.makedirs(cache, exist_ok=True)
-    prev = time.time()
     devlist, devdb, driver_map, modlist = load_db(hwconf, devdb_path)
-    if log:
-        print("Load DB: ", time.time()-prev)
-        prev = time.time()
 
     odeps = cache_load(os.path.join(cache, "objdeps"))
     if not odeps:
@@ -299,15 +285,9 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     if not alldrv_list:
         alldrv_list = load_alldrv(linux_build)
         cache_dump(alldrv_list, os.path.join(cache, "alldrv_list"))
-    if log:
-        print("Load All Drv: ", time.time()-prev)
-        prev = time.time()
 
     mod_dir = os.path.join(check_dir, "lib/modules/", get_kernel_ver(check_dir))
     mod_dep, rev_dep = builddep.get_deps(mod_dir)
-    if log:
-        print("Build Mod Dep: ", time.time()-prev)
-        prev = time.time()
 
     allmod, symtab = get_target_info(check_dir)
 
@@ -345,10 +325,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         print("mod_list: ", len(mod_exists), "/", len(modlist))
         print("mod_remove: ", len(mod_remove), "/", len(driver_map))
         print(mod_unknown)
-
-    if log:
-        print("Build Mod rm_list: ", time.time()-prev)
-        prev = time.time()
 
     mod_keeps_update = set()
     for m in mod_keeps:
@@ -406,10 +382,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                 allbuiltin.add((m,sym))
                 break
 
-    if log:
-        print("Build Built-in rm_list: ", time.time()-prev)
-        prev = time.time()
-
     # Mod Deps
     new_mod_remove = mod_remove.copy()
     for m in mod_remove:
@@ -439,10 +411,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         if m in rev_dep:
             new_new_mod_remove.update([x for x in rev_dep[m] if x in alldiskmods])
 
-    if log:
-        print("Build Deps rm_list: ", time.time()-prev)
-        prev = time.time()
-
     # Total Mods with Deps
     new_mod_exists = mod_exists.copy()
 
@@ -465,9 +433,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         print("NoEntry Mod Dep Remove: ", len(dep_remove), len(set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove)))
         print(dep_remove)
 
-    if log:
-        print("Build NoEntry Deps rm_list: ", time.time()-prev)
-        prev = time.time()
     cur_removed_mods = set([os.path.basename(x).split('.')[0] for x in dep_remove]) | new_new_mod_remove
 
     # Function Dependency -- Built-in && Register APIs
@@ -588,8 +553,6 @@ def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[], initonly=Fa
         if not osym or osym not in sym_map:
             continue
         patch_set[osym] = sym_map[osym] - sym_map['_text']
-
-    prev_time = time.time()
 
     patch_ranges = list()
     kern_text_off, kern_text_va = disasm.get_text_rel(vmlinux)
@@ -733,8 +696,6 @@ def patch_module (check_dir, patch_list, mod_ver=None):
             mod_patch[mod] = set()
         mod_patch[mod].add(sym)
 
-    prev_time = time.time()
-
     # Load target modules and start patching
     if not mod_ver:
         mod_ver = get_kernel_ver(check_dir)
@@ -803,8 +764,6 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                     os.system(f"{pack_helper[ext]} < {target_mod} > {os.path.join(root, mod)}")
 
                 shutil.rmtree(workdir)
-
-    print("Patch modules: ", time.time()-prev_time)
 
 def remove_module(check_dir, rmmods, mod_ver=None):
     ## Remove Drivers in RootFS

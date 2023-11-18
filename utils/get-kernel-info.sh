@@ -8,7 +8,7 @@ if [ "$#" -ne 1 ]; then
 	exit 1
 fi
 
-ROOTPATH=$(realpath "$1")
+ROOTPATH="$1"
 BOOTPATH="${ROOTPATH}/boot"
 MODPATH="${ROOTPATH}/lib/modules"
 
