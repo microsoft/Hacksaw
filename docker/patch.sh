@@ -30,7 +30,7 @@ if [ -z "${kerver}" ] || [ -z "${sysimg}" ] || [ -z "${profile}" ]; then
   usage
 fi
 
-if [ ! -f ${sysimg} ]; then
+if [ ! -e ${sysimg} ]; then
   echo "$sysimg does not exist."
   exit 1
 fi

@@ -53,6 +53,11 @@ CNT_BASE_PATH="/hacksaw"
 HWPROFILE=$(realpath --relative-to=$ROOTDIR $profile)
 SYSIMG_PATH=$(realpath --relative-to=$ROOTDIR $sysimg)
 SYSIMG=$(basename $SYSIMG_PATH)
+if [ -z "${sysmap}" ]; then
+  SYSMAP_PATH=""
+else
+  SYSMAP_PATH=$(realpath --relative-to=$ROOTDIR $sysmap)
+fi
 
 pushd ${ROOTDIR}
 
@@ -108,9 +113,15 @@ if [ ! -e $KERNEL_BUILD_PATH ]; then
 fi
 
 # patch extracted kernel, modules, and initramfs
+if [ "$SYSMAP_PATH" = "" ]; then
 docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID --name hacksaw hacksaw:0.1 \
   -- \
   patch -k $KERNEL_VER -i $IMAGE_BASE_PATH -p $HWPROFILE
+else
+docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID --name hacksaw hacksaw:0.1 \
+  -- \
+  patch -k $KERNEL_VER -i $IMAGE_BASE_PATH -p $HWPROFILE -s $SYSMAP_PATH
+fi
 
 # update the target image using patched files
 docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID \
