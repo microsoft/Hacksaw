@@ -24,8 +24,8 @@ def load_alldrv(linux_build):
     alldrv_list = set()
     for root,_,mods in os.walk(linux_build):
         for mod in mods:
-            if mod.endswith(".ko"):
-                mod = mod[:-3]
+            if mod.endswith(".mod"):
+                mod = mod[:-4]
                 alldrv_list.add(mod)
     return alldrv_list
 
@@ -33,8 +33,8 @@ def load_alldrv_with_path(linux_build):
     alldrv_list = dict()
     for root,_,mods in os.walk(linux_build):
         for mod in mods:
-            if mod.endswith(".ko"):
-                bmod = mod[:-3]
+            if mod.endswith(".mod"):
+                bmod = mod[:-4]
                 if bmod not in alldrv_list:
                     alldrv_list[bmod] = set()
                 alldrv_list[bmod].add(os.path.join(os.path.relpath(root, linux_build), mod))
