@@ -147,7 +147,7 @@ if __name__ == '__main__':
         print(diskimg, "does not exist", file=sys.stderr)
         sys.exit(1)
 
-    if not sysmap and not os.path.exists(sysmap):
+    if sysmap and not os.path.exists(sysmap):
         print(sysmap, "does not exist", file=sys.stderr)
         sys.exit(1)
 

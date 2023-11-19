@@ -1,5 +1,4 @@
 #!/bin/bash
-
 curdir=$(dirname $(realpath $0))
 linux_build=$(realpath "$1")
 

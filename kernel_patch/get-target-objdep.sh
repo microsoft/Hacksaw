@@ -31,4 +31,5 @@ if [ -d "$KERNEL_NOINLINE_BUILD_PATH" ]; then
   ${CURDIR}/copy_noinline_imptab.sh $KERNEL_NOINLINE_BUILD_PATH $KERNEL_TARGET_BUILD_PATH
 fi
 
-${ROOTDIR}/hwdb/prepare_database/gen_objdep.sh $KERNEL_TARGET_BUILD_PATH
+${CURDIR}/gen_objdep.sh $KERNEL_TARGET_BUILD_PATH
+${CURDIR}/touch-nonbc-objs.sh $KERNEL_TARGET_BUILD_PATH

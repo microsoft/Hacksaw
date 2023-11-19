@@ -207,10 +207,6 @@ class ObjDeps(object):
                 elif fname.endswith(".o.nonbc"):
                     mod = normalize_object_name(fname, ".o.nonbc", ".o", root)
                     self.non_bc_mods.add(mod)
-                elif fname.endswith(".o"):
-                    if not os.path.exists(fpath+".bc"):
-                        mod = normalize_object_name(fname, ".o", ".o", root)
-                        self.non_bc_mods.add(mod)
         
         # link function through global variables
         for mod in self.gdat_lnks:

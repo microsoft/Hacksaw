@@ -1,10 +1,10 @@
 #!/bin/bash
 usage() {
-  echo "Usage: $0 -i <system image path> -p <hardware profile file> [-s <system.map file>]" 1>&2
+  echo "Usage: $0 -i <system image path> -p <hardware profile file> [-s <system.map file>] [-b 1 (build container)]" 1>&2
   exit 1
 }
 
-while getopts ":i:p:s:" o; do
+while getopts ":i:p:s:b:" o; do
   case "${o}" in
     i)
       sysimg=${OPTARG}
@@ -14,6 +14,9 @@ while getopts ":i:p:s:" o; do
       ;;
     s)
       sysmap=${OPTARG}
+      ;;
+    b)
+      build=${OPTARG}
       ;;
     *)
       usage
@@ -61,9 +64,11 @@ fi
 
 pushd ${ROOTDIR}
 
-pushd ${ROOTDIR}/docker
-./build-containers.sh
-popd
+if [ ! -z "${build}" ]; then
+  pushd ${ROOTDIR}/docker
+  ./build-containers.sh
+  popd
+fi
 
 BUILDDIR="${ROOTDIR}/build/"
 IMAGE_BASE_PATH="out/out.${SYSIMG}"
