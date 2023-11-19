@@ -30,6 +30,8 @@ def parse_arguments(cli_args = None):
                         help='directory to find dependency DBs')
     parser.add_argument('-o', '--output-path', action='store', required=True,
                         help='output path')
+    parser.add_argument('-s', '--system-map', action='store',
+                        help='system.map file path')
     parser.add_argument('-g', '--guestmount', action='store_true',
                         help='use guestmount to access disk image')
     parser.set_defaults(guestmount=False)
@@ -64,7 +66,7 @@ def mount_image(diskimg):
 
     return mntpoint
 
-def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, dev, db):
+def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, dev, db, sysmap):
     db_match = set()
     rm = set()
     unk = set()
@@ -80,7 +82,7 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
     fdep_ko = set()
     allkernfunc = set()
 
-    tup = hwfilter.check_drivers(dev, db, img_mounted, busreg_apis, btobj_deps, linux_src, linux_build)
+    tup = hwfilter.check_drivers(dev, db, img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, sysmap)
 
     db_match.update(tup[0])
     rm.update(tup[1])
@@ -102,7 +104,7 @@ def analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, 
     return (db_match, rm, unk, bi_rm, allmod, bi_match, allbuiltin, mod_dep, builtin_dep, mod_builtin_dep, noentry,  fdep_func, fdep_ko, allkernfunc, allbtdrv, rmbtdrv)
 
 
-def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build):
+def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build, sysmap):
 #     print('rm:', len(rm))
 #     print('bi_rm:', len(bi_rm))
 #     print('mod_dep:', len(mod_dep))
@@ -112,7 +114,7 @@ def patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, n
 #     print('fdep_func:', len(fdep_func))
 #     print('fdep_ko:', len(fdep_ko))
 
-    newkern = hwfilter.patch_kernel(img_mounted, bi_rm|builtin_dep|fdep_func)
+    newkern = hwfilter.patch_kernel(img_mounted, bi_rm|builtin_dep|fdep_func, sysmap)
     hwfilter.replace_kernel(img_mounted, newkern)
     hwfilter.remove_module(img_mounted, rm|mod_dep|mod_builtin_dep|noentry)
     hwfilter.patch_module(img_mounted, fdep_ko)
@@ -127,6 +129,7 @@ if __name__ == '__main__':
     linux_build = args.kernel_build
     hwprof = args.hw_profile
     diskimg = args.disk_image
+    sysmap = args.system_map
 
     if not os.path.exists(linux_src):
         print(linux_src, "does not exist", file=sys.stderr)
@@ -142,6 +145,10 @@ if __name__ == '__main__':
 
     if not os.path.exists(diskimg):
         print(diskimg, "does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    if not sysmap and not os.path.exists(sysmap):
+        print(sysmap, "does not exist", file=sys.stderr)
         sys.exit(1)
 
     builtin_objdeplist = os.path.join(args.db_path, "builtin-objs.dep")
@@ -171,9 +178,9 @@ if __name__ == '__main__':
         img_mounted = diskimg
 
     _, rm, _, bi_rm, _, _, _, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, _, _, _ = \
-        analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, hwprof, hwdb)
+        analyze_image(img_mounted, busreg_apis, btobj_deps, linux_src, linux_build, hwprof, hwdb, sysmap)
 
-    patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build)
+    patch_image(img_mounted, rm, bi_rm, mod_dep, builtin_dep, mod_builtin_dep, noentry, fdep_func, fdep_ko, linux_build, sysmap)
 
     if args.guestmount:
         unmount_image(img_mounted)

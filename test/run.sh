@@ -1,34 +1,70 @@
 #!/bin/bash
+usage() {
+  echo "Usage: $0 -i <system image path> -p <hardware profile file> [-s <system.map file>]" 1>&2
+  exit 1
+}
+
+while getopts ":i:p:s:" o; do
+  case "${o}" in
+    i)
+      sysimg=${OPTARG}
+      ;;
+    p)
+      profile=${OPTARG}
+      ;;
+    s)
+      sysmap=${OPTARG}
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+if [ -z "${sysimg}" ] || [ -z "${profile}" ]; then
+  usage
+fi
+
+if [ ! -f ${sysimg} ]; then
+  echo "$sysimg does not exist."
+  exit 1
+fi
+
+if [ ! -f ${profile} ]; then
+  echo "$profile does not exist."
+  exit 1
+fi
+
+if [ ! -z "${sysmap}" ] && [ ! -f ${sysmap} ]; then
+  echo "$sysmap does not exist."
+  exit 1
+fi
+
+BLUE='\033[0;34m'
+NC='\033[0m'
+
 USERID=$(id -u)
 GROUPID=$(id -g)
 
-BASEDIR=$(dirname $(dirname $(realpath $0)))
+ROOTDIR=$(dirname $(dirname $(realpath $0)))
 CNT_BASE_PATH="/hacksaw"
 
-pushd $BASEDIR
+HWPROFILE=$(realpath --relative-to=$ROOTDIR $profile)
+SYSIMG_PATH=$(realpath --relative-to=$ROOTDIR $sysimg)
+SYSIMG=$(basename $SYSIMG_PATH)
 
-pushd docker
+pushd ${ROOTDIR}
+
+pushd ${ROOTDIR}/docker
 ./build-containers.sh
 popd
 
-HWPROFILE="test/hwprof/qemu-kvm.txt"
-
-SYSIMG="mantic-server-cloudimg-amd64.img"
-IMGURL="https://cloud-images.ubuntu.com/mantic/current/${SYSIMG}"
-# SYSIMG="openSUSE-Leap-15.5.x86_64-NoCloud.qcow2"
-# IMGURL="https://download.opensuse.org/repositories/Cloud:/Images:/Leap_15.5/images/${SYSIMG}"
-
-SYSIMG_PATH="test/images/${SYSIMG}"
-if [ ! -e ${BASEDIR}/${SYSIMG_PATH} ]; then
-  mkdir -p $(dirname ${BASEDIR}/${SYSIMG_PATH})
-  wget $IMGURL -O ${BASEDIR}/${SYSIMG_PATH}
-fi
-
-BUILDDIR="${BASEDIR}/build/"
+BUILDDIR="${ROOTDIR}/build/"
 IMAGE_BASE_PATH="out/out.${SYSIMG}"
 
 # extract kernel, modules, initramfs, and config from a target system image
-if [ ! -e ${BASEDIR}/${IMAGE_BASE_PATH} ]; then
+if [ ! -e ${ROOTDIR}/${IMAGE_BASE_PATH} ]; then
   docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID \
     --cap-add SYS_ADMIN --device /dev/fuse --device /dev/kvm --security-opt apparmor:unconfined \
     --group-add $(getent group kvm | cut -d: -f3) \
@@ -37,8 +73,8 @@ if [ ! -e ${BASEDIR}/${IMAGE_BASE_PATH} ]; then
     extract -i $SYSIMG_PATH -o out/
 fi
 
-KERNEL_VER=$(${BASEDIR}/utils/get-kernel-info.sh $IMAGE_BASE_PATH | grep 'version:' | awk '{ print $2 }')
-CONFIG_FILE=$(${BASEDIR}/utils/get-kernel-info.sh $IMAGE_BASE_PATH | grep 'config:' | awk '{ print $2 }')
+KERNEL_VER=$(${ROOTDIR}/utils/get-kernel-info.sh ${IMAGE_BASE_PATH} | grep 'version:' | awk '{ print $2 }')
+CONFIG_FILE=$(${ROOTDIR}/utils/get-kernel-info.sh ${IMAGE_BASE_PATH} | grep 'config:' | awk '{ print $2 }')
 
 if [ "$KERNEL_VER" = "none" ]; then
   echo "Failed to identify kernel version"
@@ -50,11 +86,11 @@ if [ "$CONFIG_FILE" = "none" ]; then
   exit 1
 fi
 
-echo "System image: $SYSIMG"
-echo "Kernel version: $KERNEL_VER"
-echo "Config file: $CONFIG_FILE"
+echo -e "${BLUE}System image: ${SYSIMG}${NC}"
+echo -e "${BLUE}Kernel version: ${KERNEL_VER}${NC}"
+echo -e "${BLUE}Config file: ${CONFIG_FILE}${NC}"
 
-OUTPUT_PATH="${BASEDIR}/out/${KERNEL_VER}"
+OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 KERNEL_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-target/"
 
 # prepare database for target kernel version

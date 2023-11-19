@@ -74,7 +74,7 @@ def get_initrd(check_dir):
     
     return None
 
-def get_target_info(check_dir):
+def get_target_info(check_dir, sysmap=None):
     mod_ver = get_kernel_ver(check_dir)
 
     ## Modules Files
@@ -89,7 +89,10 @@ def get_target_info(check_dir):
                 mod_list.add((m, os.path.join(root[len(mod_dir):], fn)))
 
     symtab = []
-    with open(os.path.join(check_dir, "boot", "System.map-"+mod_ver), 'r') as fd:
+    sysmap_path = sysmap
+    if not sysmap_path:
+        sysmap_path = os.path.join(check_dir, "boot", "System.map-"+mod_ver)
+    with open(sysmap_path, 'r') as fd:
         data = fd.read().strip()
         for line in data.split('\n'):
             addr, ty, sym = line.split()
@@ -270,7 +273,7 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
 
     return (rmfunc_fdep, rmko_fdep)
 
-def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, cache="/tmp/.cache/forklift", log=False, tag=""):
+def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, sysmap, cache="/tmp/.cache/forklift", log=False, tag=""):
     if not os.path.exists(cache):
         os.makedirs(cache, exist_ok=True)
     devlist, devdb, driver_map, modlist = load_db(hwconf, devdb_path)
@@ -289,7 +292,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     mod_dir = os.path.join(check_dir, "lib/modules/", get_kernel_ver(check_dir))
     mod_dep, rev_dep = builddep.get_deps(mod_dir)
 
-    allmod, symtab = get_target_info(check_dir)
+    allmod, symtab = get_target_info(check_dir, sysmap)
 
     # non-function symbols
     nonfunc_syms = set([t[2] for t in symtab if t[1] not in set(['t', 'T', 'w', 'W'])])
@@ -509,7 +512,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
 
     return (new_mod_exists, mod_remove, mod_unknown, patch_list, allmod, allbuiltin, skip_list.union(patch_list), new_mod_remove.difference(mod_remove), new_patch_list.difference(patch_list), new_new_mod_remove.difference(new_mod_remove), set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove), None, None, rmfunc_fdep, rmko_fdep, allkernfunc, builtin_mod_exists, new_builtin_mod_remove)
 
-def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[], initonly=False):
+def patch_kernel(img_mounted, patch_list, sysmap, filter_key=None, extra=[], initonly=False):
     extract_vmlinux='./extract-vmlinux'
     if not os.path.exists(extract_vmlinux):
         os.system(f"wget https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-vmlinux -O {extract_vmlinux}")
@@ -524,7 +527,7 @@ def patch_kernel(img_mounted, patch_list, filter_key=None, extra=[], initonly=Fa
         subprocess.call([extract_vmlinux, vmlinuz], stdout=f)
 
     # load sym_map
-    sym_tab = get_target_info(img_mounted)[1]
+    sym_tab = get_target_info(img_mounted, sysmap)[1]
     sym_map = dict()
     for addr,ty,sym in sym_tab:
         if ty not in set(['T','t','W','w']):
