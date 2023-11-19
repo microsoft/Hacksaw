@@ -51,7 +51,6 @@ cp $TARGET_CONFIG_FILE $KERNEL_TARGET_BUILD_PATH/.config
 ./scripts/kconfig/merge_config.sh -O $KERNEL_TARGET_BUILD_PATH $KERNEL_TARGET_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT
 make CC=clang olddefconfig O=$KERNEL_TARGET_BUILD_PATH
 make CC=clang -j$(nproc) KCFLAGS='-w' vmlinux modules O=$KERNEL_TARGET_BUILD_PATH
-make -j$(nproc) CC=clang INSTALL_MOD_PATH=./mod_install modules_install O=$KERNEL_TARGET_BUILD_PATH
 
 if [ ! -z "$NOINLINE" ]; then
   make mrproper
