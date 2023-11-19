@@ -44,9 +44,6 @@ if [ ! -z "${sysmap}" ] && [ ! -f ${sysmap} ]; then
   exit 1
 fi
 
-BLUE='\033[0;34m'
-NC='\033[0m'
-
 USERID=$(id -u)
 GROUPID=$(id -g)
 
@@ -96,9 +93,9 @@ if [ "$CONFIG_FILE" = "none" ]; then
   exit 1
 fi
 
-echo -e "${BLUE}System image: ${SYSIMG}${NC}"
-echo -e "${BLUE}Kernel version: ${KERNEL_VER}${NC}"
-echo -e "${BLUE}Config file: ${CONFIG_FILE}${NC}"
+echo "System image: ${SYSIMG}"
+echo "Kernel version: ${KERNEL_VER}"
+echo "Config file: ${CONFIG_FILE}"
 
 OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 KERNEL_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-target/"
