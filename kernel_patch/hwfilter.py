@@ -170,16 +170,6 @@ def match_initcall_sig(mod, initf, sym):
     newsym = re.sub(r"__[0-9]+_[0-9]+_", '____', sym)
     return newsym.startswith(initcall_sig) or osym == initcall_sig_old
 
-def cache_load(p):
-    if (os.path.exists(p)):
-        with open(p, 'rb') as fd:
-            return pickle.load(fd)
-    return None
-
-def cache_dump(obj, p):
-    with open(p, 'wb') as fd:
-        pickle.dump(obj, fd)
-
 def check_fdep(fdep_checklist, patch_sym, odeps, \
         relmod_bypass_filter=None, relmod_filter=None, func_check=None, mod_check=None):
     fdep_checklist_ex = fdep_checklist.copy()
@@ -273,21 +263,13 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
 
     return (rmfunc_fdep, rmko_fdep)
 
-def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, sysmap, cache="/tmp/.cache/forklift", log=False, tag=""):
-    if not os.path.exists(cache):
-        os.makedirs(cache, exist_ok=True)
+def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, sysmap, log=False, tag=""):
     devlist, devdb, driver_map, modlist = load_db(hwconf, devdb_path)
 
-    odeps = cache_load(os.path.join(cache, "objdeps"))
-    if not odeps:
-        odeps = gen_objdep.ObjDeps(linux_src, linux_build, btobj_deps)
-        cache_dump(odeps, os.path.join(cache, "objdeps"))
+    odeps = gen_objdep.ObjDeps(linux_src, linux_build, btobj_deps)
 
     # all drivers db to check non-public drivers
-    alldrv_list = cache_load(os.path.join(cache, "alldrv_list"))
-    if not alldrv_list:
-        alldrv_list = load_alldrv(linux_build)
-        cache_dump(alldrv_list, os.path.join(cache, "alldrv_list"))
+    alldrv_list = load_alldrv(linux_build)
 
     mod_dir = os.path.join(check_dir, "lib/modules/", get_kernel_ver(check_dir))
     mod_dep, rev_dep = builddep.get_deps(mod_dir)
@@ -418,14 +400,8 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     new_mod_exists = mod_exists.copy()
 
     # Mod has no init
-    noentry = cache_load(os.path.join(cache, "noentry"+tag))
-    if not noentry:
-        noentry = checkmodsym.get_noentry(mod_dir)
-        cache_dump(noentry, os.path.join(cache, "noentry"+tag))
-    full_rev_dep = cache_load(os.path.join(cache, "full_rev_dep"+tag))
-    if not full_rev_dep:
-        full_rev_dep = checkmodsym.get_deps(mod_dir)
-        cache_dump(full_rev_dep, os.path.join(cache, "full_rev_dep"+tag))
+    noentry = checkmodsym.get_noentry(mod_dir)
+    full_rev_dep = checkmodsym.get_deps(mod_dir)
     dep_remove = set()
     for m in noentry:
         if os.path.basename(m).split('.')[0] not in alldiskmods:
@@ -570,6 +546,7 @@ def patch_kernel(img_mounted, patch_list, sysmap, filter_key=None, extra=[], ini
         ret_patched = False
         if not patch_range:
             continue
+        print(f"patched '{sym}@vmlinuz'")
         for poff in patch_range:
             plen = patch_range[poff]
             if not ret_patched:
@@ -714,7 +691,7 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                 workdir = tempfile.mkdtemp(prefix="fdepmod_")
                 target_mod = os.path.join(workdir, m+".ko")
                 if ext == "ko":
-                    shutils.copy2(os.path.join(root, mod), target_mod)
+                    shutil.copy2(os.path.join(root, mod), target_mod)
                 else:
                     os.system(f"{unpack_helper[ext]} < {os.path.join(root, mod)} > {target_mod}")
 
@@ -735,6 +712,7 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                 for patchsym in mod_patch[m]:
                     if patchsym not in off_map:
                         continue
+                    print(f"patched '{patchsym}@{m}.ko'")
                     patchoff = off_map[patchsym]
                     base_off = patchoff
                     patch_range = disasm.disasm(target_mod, patchoff, True)
@@ -742,13 +720,17 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                     for poff in patch_range:
                         plen = patch_range[poff]
                         if not ret_patched:
+                            # Skip endbr for ftrace
+                            if kodata[poff:poff+4] == list(b'\xf3\x0f\x1e\xfa') or kodata[poff:poff+4] == list(b'\xf3\x0f\x1e\xfb'):
+                                poff += 4
+                                plen -= 4
                             # Skip Ftrace Stub
-                            if kodata[poff:poff+5] == list(b'\xe8\x00\x00\x00\x00'):
+                            if kodata[poff] == 0xe8:
                                 poff += 5
                                 plen -= 5
                             if plen > 0:
                                 kodata[poff] = 0xc3
-                                for pi in range(1, plen, 1):
+                                for pi in range(1, plen):
                                     kodata[poff+pi] = 0x90
                                 ret_patched = True
                             else:
@@ -779,6 +761,7 @@ def remove_module(check_dir, rmmods, mod_ver=None):
             if m in rmmods or re.sub('-', '_', m) in rmmods:
                 drv_path = os.path.join(root, mod)
                 os.unlink(drv_path)
+                print(f"removed '{mod}'")
 
     os.system(f"depmod -a -b {check_dir} {mod_ver}")
 
