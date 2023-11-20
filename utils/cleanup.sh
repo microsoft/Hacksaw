@@ -13,12 +13,15 @@ BUILDDIR="${ROOTDIR}/build"
 
 KERNEL_VER="$1"
 
-KERNEL_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}/"
-KERNEL_NOINLINE_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-noinline/"
-KERNEL_TARGET_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-target/"
+KERNEL_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}"
+KERNEL_NOINLINE_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-noinline"
+KERNEL_TARGET_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-target"
 
-rm -rf $KERNEL_BUILD_PATH 2>/dev/null
 rm -rf $KERNEL_NOINLINE_BUILD_PATH 2>/dev/null
+
+if [ ! -L $KERNEL_TARGET_BUILD_PATH ]; then
+	rm -rf $KERNEL_BUILD_PATH 2>/dev/null
+fi
 
 find $KERNEL_TARGET_BUILD_PATH -type f \
 	! \( -name '*.o.symtab' -o -name '*.o.imptab' -o -name '*.o.impnoin' -o -name '*.o.symlnk' -o -name '*.o.symcbs' -o -name '*.o.fptref' -o -name '*.o.nonbc' -o -name '*.mod' \) \

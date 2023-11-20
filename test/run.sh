@@ -1,10 +1,10 @@
 #!/bin/bash
 usage() {
-  echo "Usage: $0 -i <system image path> -p <hardware profile file> [-s <system.map file>] [-b 1 (build container)]" 1>&2
+  echo "Usage: $0 -i <system image path> -p <hardware profile file> [-s <system.map file>] [-b 1 (build container)] [-c 1 (use in-image config)]" 1>&2
   exit 1
 }
 
-while getopts ":i:p:s:b:" o; do
+while getopts ":i:p:s:b:c:" o; do
   case "${o}" in
     i)
       sysimg=${OPTARG}
@@ -17,6 +17,9 @@ while getopts ":i:p:s:b:" o; do
       ;;
     b)
       build=${OPTARG}
+      ;;
+    c)
+      imgconf=${OPTARG}
       ;;
     *)
       usage
@@ -71,7 +74,7 @@ BUILDDIR="${ROOTDIR}/build/"
 IMAGE_BASE_PATH="out/out.${SYSIMG}"
 
 # extract kernel, modules, initramfs, and config from a target system image
-if [ ! -e ${ROOTDIR}/${IMAGE_BASE_PATH} ]; then
+if [ ! -d ${ROOTDIR}/${IMAGE_BASE_PATH} ]; then
   docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID \
     --cap-add SYS_ADMIN --device /dev/fuse --device /dev/kvm --security-opt apparmor:unconfined \
     --group-add $(getent group kvm | cut -d: -f3) \
@@ -101,14 +104,20 @@ OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 KERNEL_BUILD_PATH="${BUILDDIR}/linux-${KERNEL_VER}-target/"
 
 # prepare database for target kernel version
-if [ ! -e $OUTPUT_PATH ]; then
-  docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID --name hacksaw hacksaw:0.1 \
-    -- \
-    prepare -k $KERNEL_VER
+if [ ! -d $OUTPUT_PATH ] || [ ! -f ${OUTPUT_PATH}/builtin-objs.dep ] || [ ! -f ${OUTPUT_PATH}/bus-regfuns.db ] || [ ! -f ${OUTPUT_PATH}/class-regfuns.db ] || [ ! -f ${OUTPUT_PATH}/hw.db ]; then
+  if [ -z $imgconf ]; then
+    docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID --name hacksaw hacksaw:0.1 \
+      -- \
+      prepare -k $KERNEL_VER
+  else
+    docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID --name hacksaw hacksaw:0.1 \
+      -- \
+      prepare -k $KERNEL_VER -c $CONFIG_FILE
+  fi
 fi
 
 # analyze target kernel based on its version, its build configuration, and prepared database
-if [ ! -e $KERNEL_BUILD_PATH ]; then
+if [ ! -e $KERNEL_BUILD_PATH ] || [ ! -e ${KERNEL_BUILD_PATH}/kernel/entry/common.o.impnoin ] ; then
   docker run -it --rm -v $PWD:$CNT_BASE_PATH -u $USERID:$GROUPID --name hacksaw hacksaw:0.1 \
     -- \
     analyze -k $KERNEL_VER -c $CONFIG_FILE

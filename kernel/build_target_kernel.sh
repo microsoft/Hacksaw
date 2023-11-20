@@ -21,6 +21,7 @@ SRCDIR="$CURDIR/src"
 BUILDDIR="${ROOTDIR}/build/"
 
 KERNEL_SRC_PATH="$SRCDIR/linux-$KERNEL_VER/"
+KERNEL_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER/"
 KERNEL_TARGET_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER-target/"
 KERNEL_NOINLINE_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER-noinline/"
 
@@ -29,7 +30,6 @@ cat "${CURDIR}/hacksaw.kconfig.fragment" "${CURDIR}/nosig.kconfig.fragment" | so
 
 mkdir -p $SRCDIR
 mkdir -p $KERNEL_TARGET_BUILD_PATH
-mkdir -p $KERNEL_NOINLINE_BUILD_PATH
 
 if [ ! -d "$KERNEL_SRC_PATH" ]; then
   wget -c https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VER:0:1}.x/linux-$KERNEL_VER.tar.xz -O - | tar -xJ -C $SRCDIR
@@ -50,9 +50,18 @@ make mrproper
 cp $TARGET_CONFIG_FILE $KERNEL_TARGET_BUILD_PATH/.config
 ./scripts/kconfig/merge_config.sh -O $KERNEL_TARGET_BUILD_PATH $KERNEL_TARGET_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT
 make CC=clang olddefconfig O=$KERNEL_TARGET_BUILD_PATH
-make CC=clang -j$(nproc) KCFLAGS='-w' vmlinux modules O=$KERNEL_TARGET_BUILD_PATH
+if cmp --silent -- "${KERNEL_BUILD_PATH}/.config" "${KERNEL_TARGET_BUILD_PATH}/.config"; then
+  rm -rf $KERNEL_TARGET_BUILD_PATH
+  pushd $BUILDDIR
+    ln -s linux-${KERNEL_VER} linux-${KERNEL_VER}-target
+  popd
+else
+  make CC=clang -j$(nproc) KCFLAGS='-w' vmlinux modules O=$KERNEL_TARGET_BUILD_PATH
+  make CC=clang -j$(nproc) INSTALL_MOD_PATH=./mod_install modules_install O=$KERNEL_TARGET_BUILD_PATH
+fi
 
 if [ ! -z "$NOINLINE" ]; then
+  mkdir -p $KERNEL_NOINLINE_BUILD_PATH
   make mrproper
   cp $TARGET_CONFIG_FILE $KERNEL_NOINLINE_BUILD_PATH/.config
   ./scripts/kconfig/merge_config.sh -O $KERNEL_NOINLINE_BUILD_PATH $KERNEL_BUILD_PATH/.config $KERNEL_CONF_FRAGMENT

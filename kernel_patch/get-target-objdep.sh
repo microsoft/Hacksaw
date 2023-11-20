@@ -16,7 +16,9 @@ OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 TARGET_BCLIST="${OUTPUT_PATH}/target-allbc.list"
 NOINLINE_BCLIST="${OUTPUT_PATH}/noinline-allbc.list"
 
-$ROOTDIR/kernel/build_target_kernel.sh $KERNEL_VER $TARGET_CONFIG_FILE NOINLINE
+if [ ! -e $KERNEL_TARGET_BUILD_PATH ] || [ ! -e $KERNEL_NOINLINE_BUILD_PATH ]; then
+  $ROOTDIR/kernel/build_target_kernel.sh $KERNEL_VER $TARGET_CONFIG_FILE NOINLINE
+fi
 
 mkdir -p $OUTPUT_PATH
 
