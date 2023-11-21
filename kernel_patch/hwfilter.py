@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import stat
 import re
 import sys
 import glob
@@ -11,30 +12,29 @@ import tempfile
 import subprocess
 import checkmodsym
 import disasm
+import multiprocessing as mp
+from collections import defaultdict
 
 CURDIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(CURDIR, "..", "dependency"))
 import builddep
 import gen_objdep
 
-# ./hwfilter.py ./pcidb/build/dev.list ./pcidb/build/out.db ./bigroot
-
-# find linux/build_llvm/ -name "*.ko"|rev|cut -d'/' -f1|rev|uniq > alldrv.list
 def load_alldrv(linux_build):
     alldrv_list = set()
     for root,_,mods in os.walk(linux_build):
         for mod in mods:
-            if mod.endswith(".ko"):
-                mod = mod[:-3]
+            if mod.endswith(".mod"):
+                mod = mod[:-4]
                 alldrv_list.add(mod)
     return alldrv_list
 
-def load_alldrv_path(linux_build):
+def load_alldrv_with_path(linux_build):
     alldrv_list = dict()
     for root,_,mods in os.walk(linux_build):
         for mod in mods:
-            if mod.endswith(".ko"):
-                bmod = mod[:-3]
+            if mod.endswith(".mod"):
+                bmod = mod[:-4]
                 if bmod not in alldrv_list:
                     alldrv_list[bmod] = set()
                 alldrv_list[bmod].add(os.path.join(os.path.relpath(root, linux_build), mod))
@@ -52,11 +52,11 @@ def get_kernel(check_dir):
 def get_kernel_ver(check_dir):
     kernel = get_kernel(check_dir)
     kernel_pattern = re.compile(r"vmlinu[zx]-([0-9]\.[0-9]*\.[0-9]*-[0-9]*.*)")
-    #print(kernel)
     assert(kernel_pattern.match(kernel))
     mod_ver = kernel_pattern.search(kernel).group(1)
     return mod_ver
 
+# TODO: use GRUB config
 def get_initrd(check_dir):
     mod_ver = get_kernel_ver(check_dir)
     # Fedora
@@ -72,26 +72,26 @@ def get_initrd(check_dir):
     if os.path.exists(initrd):
         return initrd
     
-    assert (False)
     return None
 
-def get_target_info(check_dir):
+def get_target_info(check_dir, sysmap=None):
     mod_ver = get_kernel_ver(check_dir)
 
     ## Modules Files
     mod_dir = os.path.join(check_dir, "lib/modules/", mod_ver)
 
-    #print("DEBUG ", mod_dir)
     mod_list = set()
     for root, _, files in os.walk(mod_dir):
         for fn in files:
             m = builddep.norm_mod(fn)
             if m.endswith(".ko"):
-                m = re.sub('-', '_', m[:-3])
                 mod_list.add((m, os.path.join(root[len(mod_dir):], fn)))
 
     symtab = []
-    with open(os.path.join(check_dir, "boot", "System.map-"+mod_ver), 'r') as fd:
+    sysmap_path = sysmap
+    if not sysmap_path:
+        sysmap_path = os.path.join(check_dir, "boot", "System.map-"+mod_ver)
+    with open(sysmap_path, 'r') as fd:
         data = fd.read().strip()
         for line in data.split('\n'):
             addr, ty, sym = line.split()
@@ -123,7 +123,6 @@ def load_db(hwconf, devdb_path, log=False):
             if sig.match(key):
                 modlist.append(devdb[sig])
                 found=True
-                #break
         if not found:
             if log:
                 print("Unknown device: ", key)
@@ -169,126 +168,115 @@ def match_initcall_sig(mod, initf, sym):
     initcall_sig = "__initcall__kmod_"+mod+"____"+initf
     newsym = re.sub(r"__[0-9]+_[0-9]+_", '____', sym)
     return newsym.startswith(initcall_sig) or osym == initcall_sig_old
-    # Deprecating modname
-    #sigmatch = newsym.startswith("__initcall__kmod_") and ("____"+func) in newsym
-    #osym = initcall_sym2init(sym)
-    #return osym == initf
-
-def cache_load(p):
-    if (os.path.exists(p)):
-        with open(p, 'rb') as fd:
-            return pickle.load(fd)
-    return None
-
-def cache_dump(obj, p):
-    with open(p, 'wb') as fd:
-        pickle.dump(obj, fd)
-
-def check_rmf(f, mod, patched, fdeps, odeps, processed, \
-        relmod_bypass_filter, relmod_filter, func_check):
-    if f in processed:
-        return (f in patched, {f} if (f in patched and ((not func_check) or func_check(f))) else {})
-    processed.add(f)
-
-    #for caller, cmod in odeps.frevdep_map[f]:
-    newpatched = set()
-    bypasscnt = 0
-    rmflag = fdeps and (f, mod) in fdeps and len(fdeps[(f, mod)]) > 0
-    if not rmflag:
-        return (False, {})
-    for cf, cmod in fdeps[(f, mod)]:
-        if cmod.endswith(".o"):
-            #if mod == cmod:
-            #    if (cf, cmod) not in fdeps:
-            #        bypasscnt += 1
-            #        continue
-            #if cf in patched:
-            if mod == cmod or cf in patched:
-                continue
-            else:
-                rmflag, rmset = check_rmf(cf, cmod, patched|newpatched, odeps.related(cf), odeps, processed, \
-                        relmod_bypass_filter, relmod_filter, func_check)
-                newpatched.update(rmset)
-                if not rmflag:
-                    break
-        else:
-            # .ko
-            m = re.sub('-', '_', os.path.basename(cmod).split('.')[0])
-            if relmod_bypass_filter and relmod_bypass_filter(m):
-                bypasscnt += 1
-                continue
-            if relmod_filter and relmod_filter(m):
-                rmflag = False
-                break
-    #return (rmflag and bypasscnt != len(fdeps[(f, mod)]), newpatched)
-    return (rmflag, newpatched)
 
 def check_fdep(fdep_checklist, patch_sym, odeps, \
         relmod_bypass_filter=None, relmod_filter=None, func_check=None, mod_check=None):
+    fdep_checklist_ex = fdep_checklist.copy()
+    patch_sym_ex = patch_sym.copy()
+
+    #  populate graph
+    new_fdep_checklist = set()
+    for o,f in fdep_checklist_ex:
+        imports = odeps.imports(o,f)
+        if imports is not None:
+            for sym in imports:
+                mods = odeps.get_mods(sym)
+                if mods is None:
+                    continue
+                for mod in mods:
+                    new_fdep_checklist.add((mod,sym))
+
+        fdeps = odeps.related(o,f)
+        if fdeps is None or len(fdeps) == 0:
+            continue
+
+        if (o,f) in fdeps:
+            for caller, cmod in fdeps[(o,f)]:
+                new_fdep_checklist.add((cmod,caller))
+
+        for relf, relmod in fdeps:
+            if relf == o and relmod == f:
+                continue
+            new_fdep_checklist.add((relmod,relf))
+
+            imports = odeps.imports(relmod,relf)
+            if imports is None:
+                continue
+            for sym in imports:
+                mods = odeps.get_mods(sym)
+                if mods is None:
+                    continue
+                for mod in mods:
+                    new_fdep_checklist.add((mod,sym))
+
+            for caller, cmod in fdeps[(relf,relmod)]:
+                new_fdep_checklist.add((cmod,caller))
+
+    fdep_checklist_ex.update(new_fdep_checklist)
+
+    num_patch_syms = len(patch_sym_ex)
+    while True:
+        for o,f in fdep_checklist_ex:
+            fdeps = odeps.related(o,f)
+            if fdeps is None or len(fdeps) == 0:
+                if not odeps.is_ir_mod(o):
+                    continue
+                if odeps.has_referencer(o, f, patch_sym_ex):
+                    continue
+                patch_sym_ex.add((o,f))
+                continue
+    
+            for relf, relmod in fdeps:
+                if not odeps.is_ir_mod(relmod):
+                    continue
+                if fdeps[(relf,relmod)] is None or len(fdeps[(relf,relmod)]) == 0:
+                    if odeps.has_referencer(relmod, relf, patch_sym_ex):
+                        continue
+                    patch_sym_ex.add((relmod,relf))
+                    continue
+    
+                patchable = True
+                for caller, cmod in fdeps[(relf,relmod)]:
+                    if not odeps.is_ir_mod(cmod) or (cmod,caller) not in patch_sym_ex:
+                        patchable = False
+                        break
+    
+                if patchable:
+                    if odeps.has_referencer(relmod, relf, patch_sym_ex):
+                        continue
+                    patch_sym_ex.add((relmod,relf))
+
+        num = len(patch_sym_ex)
+        if num_patch_syms == num:
+            break
+        else:
+            num_patch_syms = num
+
     rmfunc_fdep = set()
     rmko_fdep = set()
+    for o,f in patch_sym_ex:
+        if o.endswith(".o"):
+            rmfunc_fdep.add(f)
+        else:
+            rmko_fdep.add((f,o))
 
-    processed = set()
-    for f in fdep_checklist:
-        fdeps = odeps.related(f)
-        if not fdeps:
-            continue
-        for relf, relmod in fdeps:
-            #if relf == f:
-            #    continue
-            # check caller
-            rmflag, rmset = check_rmf(relf, relmod, patch_sym|rmfunc_fdep, fdeps, odeps, processed, \
-                    relmod_bypass_filter, relmod_filter, func_check)
-            rmfunc_fdep.update(rmset)
-
-            if not rmflag:
-                continue
-            if relmod.endswith(".o"):
-                if func_check and func_check(relf):
-                    continue
-                if relf not in patch_sym:
-                    rmfunc_fdep.add(relf)
-            else:
-                assert relmod.endswith(".ko")
-                if mod_check and mod_check(relmod):
-                    continue
-                if relf not in patch_sym:
-                    rmko_fdep.add((relf, relmod))
     return (rmfunc_fdep, rmko_fdep)
 
-def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, cache="/tmp/.cache/forklift", log=False, tag=""):
-    if not os.path.exists(cache):
-        os.makedirs(cache, exist_ok=True)
-    prev = time.time()
+def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_src, linux_build, sysmap, log=False, tag=""):
     devlist, devdb, driver_map, modlist = load_db(hwconf, devdb_path)
-    if log:
-        print("Load DB: ", time.time()-prev)
-        prev = time.time()
+
+    odeps = gen_objdep.ObjDeps(linux_src, linux_build, btobj_deps)
 
     # all drivers db to check non-public drivers
-    alldrv_list = cache_load(os.path.join(cache, "alldrv_list"))
-    if not alldrv_list:
-        alldrv_list = load_alldrv(linux_build)
-        cache_dump(alldrv_list, os.path.join(cache, "alldrv_list"))
-    if log:
-        print("Load All Drv: ", time.time()-prev)
-        prev = time.time()
+    alldrv_list = load_alldrv(linux_build)
 
-    # Build Module dependencies
-    mod_dep = cache_load(os.path.join(cache, "mod_dep"))
-    rev_dep = cache_load(os.path.join(cache, "rev_dep"))
-    if not mod_dep or not rev_dep:
-        mod_dep, rev_dep = builddep.get_deps(linux_build)
-        cache_dump(mod_dep, os.path.join(cache, "mod_dep"))
-        cache_dump(rev_dep, os.path.join(cache, "rev_dep"))
-    if log:
-        print("Build Mod Dep: ", time.time()-prev)
-        prev = time.time()
+    mod_dir = os.path.join(check_dir, "lib/modules/", get_kernel_ver(check_dir))
+    mod_dep, rev_dep = builddep.get_deps(mod_dir)
 
-    allmod, symtab = get_target_info(check_dir)
+    allmod, symtab = get_target_info(check_dir, sysmap)
 
     # non-function symbols
-    nonfunc_syms = set([t[2] for t in symtab if t[1] not in ['t', 'T']])
+    nonfunc_syms = set([t[2] for t in symtab if t[1] not in set(['t', 'T', 'w', 'W'])])
 
     # All Mods on disk img
     alldiskmods = set([t[0] for t in allmod])
@@ -320,14 +308,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     if log:
         print("mod_list: ", len(mod_exists), "/", len(modlist))
         print("mod_remove: ", len(mod_remove), "/", len(driver_map))
-        #print(mod_exists)
-        #print(modlist)
-        #print(mod_remove)
         print(mod_unknown)
-
-    if log:
-        print("Build Mod rm_list: ", time.time()-prev)
-        prev = time.time()
 
     mod_keeps_update = set()
     for m in mod_keeps:
@@ -337,9 +318,6 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
             if dm in alldiskmods:
                 mod_keeps_update.add(dm)
     mod_keeps.update(mod_keeps_update)
-
-    #exit(0)
-
     ## Builtin Modules
     patch_list = set()
     skip_list = set()
@@ -348,20 +326,15 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     allkernfunc = set()
     start_flag = False
     for addr,ty,sym in symtab:
-        if ty in ['T', 't']:
+        if ty in set(['T', 't', 'W', 'w']):
             allkernfunc.add(sym)
-        #if sym == '__initcall6_start':
         if sym == '__initcall_start':
             start_flag = True
             continue
-        #if sym == '__setup_end':
-        #    continue
-        #if sym == '__initcall7_start':
         if sym == '__con_initcall_end':
             break
         if start_flag:
             notfound = True
-            #print(sym)
             for mod in driver_map:
                 func = driver_map[mod]
                 if match_initcall_sig(mod, func, sym):
@@ -370,19 +343,19 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
                         continue
                     if log:
                         print("native: ", sym, mod, func)
-                    patch_list.add(sym)
+                    patch_list.add((mod,sym))
                     builtin_mod_remove.add(mod)
                     notfound = False
                     break
             if notfound and (sym.startswith("__initcall__kmod_") or sym.startswith("__initcall_")):
                 skip_list.add(sym)
-    sym_map = {}
+    sym_map = dict()
     for addr,_,sym in symtab:
         sym_map[sym] = addr
+
     if log:
         print("patch builtin list: ", len(patch_list))
         print("skip builtin list: ", len(skip_list))
-        #print(skip_list)
 
     # Count all existing Builtin Modules
     allbuiltin = patch_list.copy()
@@ -390,138 +363,107 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         func = driver_map[m]
         for sym in skip_list:
             if match_initcall_sig(m, func, sym):
-                allbuiltin.add(sym)
+                allbuiltin.add((m,sym))
                 break
-
-    if log:
-        print("Build Built-in rm_list: ", time.time()-prev)
-        prev = time.time()
 
     # Mod Deps
     new_mod_remove = mod_remove.copy()
     for m in mod_remove:
         if m in rev_dep:
-            #print(m, rev_dep[m], [x in mod_path for x in rev_dep[m]])
             new_mod_remove.update([x for x in rev_dep[m] if x in alldiskmods])
 
     # Builtin Deps
     new_patch_list = patch_list.copy()
     new_builtin_mod_remove = builtin_mod_remove.copy()
     for m in builtin_mod_remove:
-        if m in rev_dep:
-            for dep in rev_dep[m]:
-                func = ""
-                if dep in driver_map:
-                    func = driver_map[dep]
-                for sym in skip_list:
-                    if match_initcall_sig(dep, func, sym):
-                        new_patch_list.add(sym)
-                        new_builtin_mod_remove.add(dep)
-                        break
+        if m not in rev_dep:
+            continue
+        for dep in rev_dep[m]:
+            func = ""
+            if dep in driver_map:
+                func = driver_map[dep]
+            for sym in skip_list:
+                if not match_initcall_sig(dep, func, sym):
+                    continue
+                new_patch_list.add((mod,sym))
+                new_builtin_mod_remove.add(dep)
+                break
 
     # Mod Deps over Builtin
     new_new_mod_remove = new_mod_remove.copy()
     for m in new_builtin_mod_remove:
         if m in rev_dep:
-            #print(m, rev_dep[m], [x in mod_path for x in rev_dep[m]])
             new_new_mod_remove.update([x for x in rev_dep[m] if x in alldiskmods])
-
-    if log:
-        print("Build Deps rm_list: ", time.time()-prev)
-        prev = time.time()
 
     # Total Mods with Deps
     new_mod_exists = mod_exists.copy()
-    #for m in mod_exists:
-    #    if m in rev_dep:
-    #        new_mod_exists.update(rev_dep[m])
-    #for m in new_builtin_mod_remove:
-    #    if m in rev_dep:
-    #        new_mod_exists.update(rev_dep[m])
 
     # Mod has no init
-    mod_dir = os.path.join(check_dir, "lib/modules/", get_kernel_ver(check_dir))
-    noentry = cache_load(os.path.join(cache, "noentry"+tag))
-    if not noentry:
-        #noentry = checkmodsym.get_noentry(linux_build)
-        noentry = checkmodsym.get_noentry(mod_dir)
-        cache_dump(noentry, os.path.join(cache, "noentry"+tag))
-    full_rev_dep = cache_load(os.path.join(cache, "full_rev_dep"+tag))
-    if not full_rev_dep:
-        #full_rev_dep = checkmodsym.get_deps(linux_build)
-        full_rev_dep = checkmodsym.get_deps(mod_dir)
-        cache_dump(full_rev_dep, os.path.join(cache, "full_rev_dep"+tag))
+    noentry = checkmodsym.get_noentry(mod_dir)
+    full_rev_dep = checkmodsym.get_deps(mod_dir)
     dep_remove = set()
     for m in noentry:
         if os.path.basename(m).split('.')[0] not in alldiskmods:
             continue
-        #if m in full_rev_dep:
-        #    print (m, ' : ', full_rev_dep[m])
         if m in full_rev_dep and set([os.path.basename(x).split('.')[0] for x in full_rev_dep[m]]).intersection(alldiskmods).issubset(new_new_mod_remove):
-            #assert(set([os.path.basename(x).split('.')[0] for x in full_rev_dep[m]]).intersection(alldiskmods))
             dep_remove.add(m)
     if log:
         print("NoEntry Mod Dep Remove: ", len(dep_remove), len(set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove)))
         print(dep_remove)
 
-    if log:
-        print("Build NoEntry Deps rm_list: ", time.time()-prev)
-        prev = time.time()
-    cur_removed_mods = set([re.sub('-', '_', os.path.basename(x).split('.')[0]) for x in dep_remove]) | new_new_mod_remove
-
-    # Core Module Discovery & Removal
-    core_mod_remove = set()
-    core_mod_dep_remove = set()
-    coredepmap = cache_load(os.path.join(cache, "coredepmap"+tag))
-    if not coredepmap:
-        #coredepmap = builddep.get_core_deps(linux_build, driver_map)
-        coredepmap = builddep.get_core_deps(mod_dir, driver_map, busreg_apis)
-        cache_dump(coredepmap, os.path.join(cache, "coredepmap"+tag))
-    sub_rev_dep = dict()
-    for m in full_rev_dep:
-        mod = os.path.basename(m).split('.')[0]
-        if mod not in sub_rev_dep:
-            sub_rev_dep[mod] = set()
-        sub_rev_dep[mod].update([os.path.basename(d).split('.')[0] for d in full_rev_dep[m]])
-    for core in coredepmap:
-        if core not in alldiskmods:
-            continue
-        if core in mod_keeps:
-            continue
-        if coredepmap[core] and coredepmap[core].intersection(alldiskmods).issubset(cur_removed_mods):
-            #assert (coredepmap[core].intersection(alldiskmods))
-            if core in cur_removed_mods:
-                continue
-            core_mod_remove.add(core)
-            if core in sub_rev_dep:
-                core_mod_dep_remove.update([x for x in sub_rev_dep[core] if x in alldiskmods and x not in cur_removed_mods and x not in mod_keeps])
-
-    if log:
-        print("Build Core Module Deps rm_list: ", time.time()-prev)
-        prev = time.time()
-    cur_removed_mods.update(core_mod_remove)
-    cur_removed_mods.update(core_mod_dep_remove)
+    cur_removed_mods = set([os.path.basename(x).split('.')[0] for x in dep_remove]) | new_new_mod_remove
+    # cur_removed_mods = set([re.sub('-', '_', os.path.basename(x).split('.')[0]) for x in dep_remove]) | new_new_mod_remove
 
     # Function Dependency -- Built-in && Register APIs
     rmfunc_fdep = set()
     rmko_fdep = set()
-    odeps = cache_load(os.path.join(cache, "objdeps"))
-    if not odeps:
-        odeps = gen_objdep.ObjDeps(linux_src, linux_build, btobj_deps)
-        cache_dump(odeps, os.path.join(cache, "objdeps"))
     fdep_checklist = set()
+
     # - collect functions of built-in modules
-    patch_sym = set([initcall_sym2init(x) for x in new_patch_list])
+    patch_sym = set([])
+    for modname,initsym in new_patch_list:
+        sym = initcall_sym2init(initsym)
+        mods = odeps.get_mods(sym)
+        if mods is None:
+            continue
+        if len(mods) == 1:
+            patch_sym.add((list(mods)[0],sym))
+        else:
+            for mod in mods:
+                if mod.endswith(modname+".o") or m.endswith(modname+".ko"):
+                    patch_sym.add((mod,sym))
+                    break
     fdep_checklist.update(patch_sym)
+
     # - collect registration APIs
-    fdep_checklist.update(busreg_apis)
+    busreg_apis_with_mod = set([])
+    for sym in busreg_apis:
+        mods = odeps.get_mods(sym, global_only=True)
+        if mods is None:
+            continue
+        if len(mods) == 1:
+            busreg_apis_with_mod.add((list(mods)[0],sym))
+        else:
+            for m in mods:
+                if odeps.is_driver(m):
+                    busreg_apis_with_mod.add((m,sym))
+                    break
+    fdep_checklist.update(busreg_apis_with_mod)
+
     # - collect import symbols from removed .ko
     mod_removed = dep_remove.copy()
     for m in cur_removed_mods:
         mod_removed.update([os.path.join(mod_dir, p) for p in diskmodmaps[m]])
     for m in mod_removed:
-        if os.path.exists(m):
-            fdep_checklist.update(checkmodsym.get_sym(m, ['U', 'u']))
+        if not os.path.exists(m):
+            continue
+        for sym in checkmodsym.get_sym(m, set(['U'])):
+            exporters = odeps.get_mods(sym, global_only=True)
+            if exporters is None:
+                continue
+            for exporter in exporters:
+                if odeps.is_driver(exporter):
+                    fdep_checklist.add((exporter, sym))
 
     def relmod_bypass_filter(mod):
         return mod not in new_mod_exists and mod not in builtin_mod_exists
@@ -544,109 +486,95 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         if relmod in builtin_mod_exists:
             rmfunc_fdep.add(relf)
 
-    #with open("depfunc_rm.txt", 'w') as fd:
-    #    for f in rmfunc_fdep:
-    #        fd.write(f"{f}\n")
+    return (new_mod_exists, mod_remove, mod_unknown, patch_list, allmod, allbuiltin, skip_list.union(patch_list), new_mod_remove.difference(mod_remove), new_patch_list.difference(patch_list), new_new_mod_remove.difference(new_mod_remove), set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove), None, None, rmfunc_fdep, rmko_fdep, allkernfunc, builtin_mod_exists, new_builtin_mod_remove)
 
-    return (new_mod_exists, mod_remove, mod_unknown, patch_list, allmod, allbuiltin, skip_list.union(patch_list), new_mod_remove.difference(mod_remove), new_patch_list.difference(patch_list), new_new_mod_remove.difference(new_mod_remove), set([os.path.basename(x).split('.')[0] for x in dep_remove]).difference(new_new_mod_remove), core_mod_remove, core_mod_dep_remove, rmfunc_fdep, rmko_fdep, allkernfunc, builtin_mod_exists, new_builtin_mod_remove)
-    #exit(0)
+def patch_kernel(img_mounted, patch_list, sysmap, filter_key=None, extra=[], initonly=False):
+    extract_vmlinux='./extract-vmlinux'
+    if not os.path.exists(extract_vmlinux):
+        os.system(f"wget https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-vmlinux -O {extract_vmlinux}")
+        os.system(f"chmod a+x {extract_vmlinux}")
 
+    # find and decompress vmlinuz
+    mod_ver = get_kernel_ver(img_mounted)
+    config = os.path.join(img_mounted, "boot", "config-"+mod_ver)
+    vmlinuz = os.path.join(img_mounted, "boot", get_kernel(img_mounted))
+    _, vmlinux = tempfile.mkstemp()
+    with open(vmlinux, 'w') as f:
+        subprocess.call([extract_vmlinux, vmlinuz], stdout=f)
 
-def patch_builtin(vmlinux, patch_list, sym_tab, filter_key=None, extra=[]):
-    symtab = []
-    with open(sym_tab, 'r') as fd:
-        data = fd.read().strip()
-        for line in data.split('\n'):
-            addr, ty, sym = line.split()
-            symtab.append((int(addr,16), ty, sym))
     # load sym_map
+    sym_tab = get_target_info(img_mounted, sysmap)[1]
     sym_map = dict()
-    for addr,_,sym in symtab:
-        sym_map[sym] = addr
+    for addr,ty,sym in sym_tab:
+        if ty not in set(['T','t','W','w']):
+            continue
+        if sym not in sym_map:
+            sym_map[sym] = addr
+        else:
+            if ty == 'T':
+                sym_map[sym] = addr
 
     patch_set = dict()
-    for sym in patch_list|set(extra):
+    for xsym in patch_list|set(extra):
+        sym = None
+        if type(xsym) is tuple:
+            sym = xsym[1]
+        else:
+            sym = xsym
         if sym.startswith("__initcall_"):
             osym = initcall_sym2init(sym)
-        else:
+        elif not initonly:
             osym = sym
             if filter_key and True in [t in sym for t in filter_key]:
                 continue
-        if osym not in sym_map:
+        else:
+            osym = None
+        if not osym or osym not in sym_map:
             continue
         patch_set[osym] = sym_map[osym] - sym_map['_text']
 
-    prev_time = time.time()
-
-    patch_ranges = []
+    patch_ranges = list()
     kern_text_off, kern_text_va = disasm.get_text_rel(vmlinux)
     for sym in patch_set:
         off = patch_set[sym]
         patch_ranges.append((sym, disasm.disasm(vmlinux, off, text_rel=(kern_text_off, kern_text_va))))
-    print("Patch kernel - disasm : ", time.time()-prev_time)
-    prev_time = time.time()
 
     with open(vmlinux, 'rb') as fd:
         data = list(fd.read())
+
     for sym, patch_range in patch_ranges:
         ret_patched = False
         if not patch_range:
             continue
-        #print(sym, patch_range)
+        print(f"patched '{sym}@vmlinuz'")
         for poff in patch_range:
             plen = patch_range[poff]
-            #print(hex(poff), hex(plen))
             if not ret_patched:
+                # Skip endbr for ftrace
+                if data[poff] == 0xf3 and data[poff+1] == 0x0f and data[poff+2] == 0x1e and (data[poff+3] == 0xfa or data[poff+3] == 0xfb):
+                    poff += 4
+                    plen -= 4
                 # Skip Ftrace Stub
                 if data[poff] == 0xe8:
                     poff += 5
                     plen -= 5
                 if plen > 0:
                     data[poff] = 0xc3
-                    for pi in range(1, plen, 1):
+                    for pi in range(1, plen):
                         data[poff+pi] = 0x90
-                    #data = data[:poff] + b'\xc3' + b'\x90'*(plen-1) + data[poff+plen:]
                     ret_patched = True
                 else:
-                    pass    # try next time
+                    pass
             else:
                 for pi in range(plen):
                     data[poff+pi] = 0x90
-                #data = data[:poff] + b'\x90'*plen + data[poff+plen:]
-        assert (ret_patched)
+
     with open(vmlinux+'.patched', 'wb') as outfd:
         outfd.write(bytes(data))
 
-    print("Patch kernel: ", time.time()-prev_time)
     return vmlinux+'.patched'
 
-def run_host(cmd, cwd=None, docker=False):
-    if docker:
-        workdir = "/data"
-        if cwd:
-            workdir = os.path.join(workdir, cwd)
-        os.system(f'docker run --rm -it -v $PWD:/data -w {workdir} -u $(id -u $USER):$(id -g $USER) kernelbuild bash -c "{cmd}"')
-    else:
-        if cwd:
-            cur_cwd = os.getcwd()
-            os.chdir(cwd)
-        os.system(cmd)
-        if cwd:
-            os.chdir(cur_cwd)
-
-def check_rop_gadgets(tag):
-    cur_cwd = os.getcwd()
-    workdir = "../cve_eval/Ropper"
-    os.chdir(workdir)
-
-    kern = os.path.join(cur_cwd, 'repack', 'vmlinux.unpack')
-    kern_patched = os.path.join(cur_cwd, 'repack', 'vmlinux.unpack.patched')
-    os.system(f"./Ropper.py --nocolor -f {kern} --all > {os.path.join(cur_cwd, 'roplog', tag)}_gadgets.orig")
-    os.system(f"./Ropper.py --nocolor -f {kern_patched} --all > {os.path.join(cur_cwd, 'roplog', tag)}_gadgets.patched")
-
-    os.chdir(cur_cwd)
-
-def run_kernel_cmd(cmdfile, cwd='./build'):
+def run_kernel_cmd(cmdfile, cwd):
     cmdfile = os.path.join(cwd, cmdfile)
     print("DEBUG run_kernel_cmd ", cmdfile)
     with open(cmdfile, 'r') as fd:
@@ -655,133 +583,10 @@ def run_kernel_cmd(cmdfile, cwd='./build'):
             line = line.strip()
             if not line.startswith("cmd_"):
                 continue
-            run_host(line.split(':=')[1].strip(), cwd=cwd)
-
-def repack_kernel(check_dir, workdir, patchcb=None, replace_kern=False):
-    vmlinuz = os.path.join(check_dir, "boot", get_kernel(check_dir))
-    vmlinux = os.path.join(workdir, 'vmlinux.unpack')
-
-    if not os.path.exists(os.path.join(workdir, 'linux-stable')):
-        os.system(f"git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git {os.path.join(workdir, 'linux-stable')}")
-
-    os.system(f"{os.path.join(workdir,'linux-stable/scripts/extract-vmlinux')} {vmlinuz} > {vmlinux}")
-
-    mod_ver = get_kernel_ver(check_dir)
-    #print(mod_ver)
-    branch_ver = 'v'+'.'.join(mod_ver.split('.')[:2])   # Drop minor version
-    #print(branch_ver)
-    config = os.path.join(check_dir, "boot", "config-"+mod_ver)
-    #print(config)
-    cur_cwd = os.getcwd()
-
-    os.chdir(os.path.join(workdir, 'linux-stable'))
-    os.system("git checkout .")
-    git_ver = subprocess.check_output(["git", "describe", "--tag"]).strip()
-    if git_ver.decode('latin-1') != branch_ver:
-        os.system("rm -rf build")
-    os.system("mkdir -p build")
-    os.system(f"git checkout {branch_ver}")
-    # Fixups
-    if branch_ver == "v5.10":
-        os.system(f"git apply {os.path.join(CURDIR, '0004-x86-entry-build-thunk_-BITS-only-if-CONFIG_PREEMPTION-y.patch')}")
-    # - Fixup Pahole(?)
-    os.system("mv scripts/link-vmlinux.sh scripts/link-vmlinux.sh_bak")
-    with open('scripts/link-vmlinux.sh_bak', 'r') as fd:
-        lkscript = fd.read()
-    with open('scripts/link-vmlinux.sh', 'w') as fd:
-        patchsig = 'vmlinux_link ${1}\n'
-        if patchsig in lkscript:
-            idx = lkscript.find(patchsig)+len(patchsig)
-            with open(os.path.join(CURDIR, 'pahole.patch'), 'r') as pfd:
-                patches = pfd.read().strip().split('>---<')
-                for pt in patches[::-1]:
-                    if pt.strip().split('\n')[0].strip() not in lkscript:
-                        lkscript = lkscript[:idx] + '\n' + pt + '\n' + lkscript[idx:]
-            idx = lkscript.find('LLVM_OBJCOPY=', idx)
-            idx = lkscript.find('-J ', idx)
-            idx += 3
-            lkscript = lkscript[:idx] + '${hacksaw_extra_paholeopt} ' + lkscript[idx:]
-        fd.write(lkscript)
-    os.system(f"cp {config} ./build/.config")
-    #os.system(f"sed -i 's/^#include \"cfi_regs\.h\"/#include \<arch\/cfi_regs\.h\>/' tools/objtool/cfi.h")
-    #os.system(f"cp {os.path.join(cur_cwd, workdir, 'config')} ./build/.config")
-    # GZIP kenrel
-    #os.system("sed -i 's/CONFIG_KERNEL_ZSTD=y//' ./build/.config")
-    #os.system("sed -i 's/CONFIG_KERNEL_BZIP2=y//' ./build/.config")
-    #os.system("sed -i 's/CONFIG_KERNEL_LZMA=y//' ./build/.config")
-    #os.system("sed -i 's/CONFIG_KERNEL_XZ=y//' ./build/.config")
-    #os.system("sed -i 's/CONFIG_KERNEL_LZO=y//' ./build/.config")
-    #os.system("sed -i 's/CONFIG_KERNEL_LZ4=y//' ./build/.config")
-    #os.system("sed -i 's/# CONFIG_KERNEL_GZIP.*/CONFIG_KERNEL_GZIP=y/' ./build/.config")
-
-    # Avoid stripping kernel to reserve bigger space for patched kernel
-    #os.system(f"sed -i 's/^OBJCOPYFLAGS_vmlinux.bin.*/OBJCOPYFLAGS_vmlinux.bin :=/' ./arch/x86/boot/compressed/Makefile")
-
-    # disable module signing
-    os.system("sed -i 's/^CONFIG_MODULE_SIG_KEY.*//' ./build/.config")
-    os.system("sed -i 's/^CONFIG_SYSTEM_TRUSTED_KEY.*//' ./build/.config")
-    os.system("sed -i 's/^CONFIG_SYSTEM_REVOCATION_.*//' ./build/.config")
-    #os.system("sed -i 's/^CONFIG_DEBUG_INFO_BTF.*//' ./build/.config")
-
-    # Fixup Kernel Release Version
-    lver_idx = mod_ver.find('.', mod_ver.find('.')+1)+1
-    while mod_ver[lver_idx].isdigit():
-        lver_idx += 1
-    localver = mod_ver[lver_idx:]
-    # Avoid '+' in Kernel Version string
-    os.system("sed -i 's/^CONFIG_LOCALVERSION.*//' ./build/.config")
-    os.system("sed -i 's/^CONFIG_LOCALVERSION_AUTO.*//' ./build/.config")
-
-    run_host(f"make LOCALVERSION='{localver}' olddefconfig O=./build")
-    run_host("cat ./build/.config.old | grep CONFIG_VERSION_SIGNATURE >> ./build/.config")
-    run_host(f"make LOCALVERSION='{localver}' -j{len(os.sched_getaffinity(0))} O=./build kernel bzImage modules")
-
-    if replace_kern:
-        os.system(f"cp ./build/System.map {os.path.join(check_dir, 'boot', 'System.map-'+mod_ver)}")
-        os.system(f"cat ./build/arch/x86/boot/compressed/vmlinux.bin ./build/arch/x86/boot/compressed/vmlinux.relocs > {vmlinux}")
-
-    if patchcb:
-        vmlinux = patchcb(vmlinux)
-
-    # repacking
-    os.system(f"cat {vmlinux}|gzip -n -f -9 > build/arch/x86/boot/compressed/vmlinux.bin.gz")    # ./build/arch/x86/boot/compressed/.vmlinux.bin.gz.cmd
-    run_kernel_cmd("./arch/x86/boot/compressed/.piggy.S.cmd")
-    run_kernel_cmd("./arch/x86/boot/compressed/.piggy.o.cmd")
-    run_kernel_cmd("./arch/x86/boot/compressed/.vmlinux.cmd")
-    run_kernel_cmd("./arch/x86/boot/.vmlinux.bin.cmd")
-    run_kernel_cmd("./arch/x86/boot/.header.o.cmd")
-    run_kernel_cmd("./arch/x86/boot/.setup.elf.cmd")
-    run_kernel_cmd("./arch/x86/boot/.setup.bin.cmd")
-    run_kernel_cmd("./arch/x86/boot/.bzImage.cmd")
-
-    os.chdir(cur_cwd)
-
-    os.system(f"cp {os.path.join(workdir, 'linux-stable/build/arch/x86/boot/bzImage')} {os.path.join(workdir, 'bzImage')}")
-    return os.path.join(workdir, 'bzImage')
-
-def patch_rootinit(check_dir, newinit):
-    workdir = "./repack"
-    init = os.path.join(check_dir, "sbin/init")
-    if not os.path.exists(init):
-        init = os.path.join(check_dir, "etc/init")
-        if not os.path.exists(init):
-            init = os.path.join(check_dir, "bin/init")
-            assert (os.path.exists(init))
-
-    root_init = os.path.join(check_dir, "init")
-    if os.path.exists(root_init):
-        init = root_init
-    else:
-        os.system(f"echo 'exec {os.path.relpath(init, check_dir)}' > {root_init}")
-        os.system(f"chmod 777 {root_init}")
-
-    init_dir = os.path.dirname(init)
-    staged_init = os.path.join(init_dir, "staged_init")
-
-    os.system(f"mv {init} {staged_init}")
-    os.system(f"cp {newinit} {init}")
-    os.system(f"chmod 777 {init}")
-
+            cur_cwd = os.getcwd()
+            os.chdir(cwd)
+            os.system(line.split(':=')[1].strip())
+            os.chdir(cur_cwd)
 
 unpack_helper = {
         "zst" : "zstdcat",
@@ -801,14 +606,13 @@ pack_helper = {
         "lz4" : "lz4",
         "lzo" : "lzop",
         }
-def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch=False):
+def patch_initrd(check_dir, rmmods, filter_key=[], opensuse_fstab_patch=False):
     initrd = get_initrd(check_dir)
+    if not initrd:
+        return
+    initrd = os.path.realpath(initrd)
     ker_ver = get_kernel_ver(check_dir)
-    tmprd = os.path.join(workdir, "ramfs")
-    if os.path.exists(tmprd):
-        #shutil.rmtree(tmprd)
-        os.system(f"sudo rm -rf {tmprd}")
-    os.mkdir(tmprd)
+    tmprd = tempfile.mkdtemp(prefix='ramfs_')
     cur_cwd = os.getcwd()
     os.chdir(tmprd)
 
@@ -838,33 +642,14 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
     os.mkdir(unpackdir)
     os.chdir(unpackdir)
     os.system(f"({unpack_helper[fspart.split('.')[-1]]} | cpio -id) < {os.path.join('../out', fspart)}")
-    #os.chdir(tmprd)
-    #print([m for m in rmmods if "iscsi" in m])
     if filter_key:
         rmmods = [m for m in rmmods if True not in [fk in m for fk in filter_key]]
     stat_res = calc_module_count(".", rmmods, ker_ver)
     remove_module('.', rmmods, ker_ver)
-    remove_firmware('.')
-
-    # Replace Module with current build to avoid MODVERSIONS inconsistency
-    build_path = os.path.join(workdir, "linux-stable/build")
-    modpath = os.path.join('./lib/modules', ker_ver, 'kernel')
-    for root,_,files in os.walk(modpath):
-        for fn in files:
-            mod = builddep.norm_mod(fn)
-            if mod.endswith(".ko"):
-                uri = os.path.relpath(root, modpath)
-                if os.path.exists(os.path.join(build_path, uri, fn)):
-                    os.system(f"cp {os.path.join(build_path, uri, fn)} {os.path.join(root, fn)}")
-                elif os.path.exists(os.path.join(build_path, uri, mod)):
-                    ext = fn.split('.')[-1]
-                    os.system(f"{pack_helper[ext]} < {os.path.join(build_path, uri, mod)} > {os.path.join(root, fn)}")
-
     if opensuse_fstab_patch:
         with open("./etc/fstab", 'w') as fd:
             fd.write("LABEL=ROOT /sysroot xfs defaults 0 1\n")
             fd.write("LABEL=EFI /boot/efi vfat defaults 0 0\n")
-    #os.chdir(unpackdir)
     os.system(f"find .|cpio -o -H newc|{pack_helper[fspart.split('.')[-1]]} > ../newrd.img")
     os.chdir("..")
     data = b""
@@ -878,125 +663,9 @@ def patch_initrd(check_dir, workdir, rmmods, filter_key=[], opensuse_fstab_patch
     with open(os.path.join(cur_cwd, initrd), 'wb') as fd:
         fd.write(data)
 
-    #os.system(f"cpio -idv < {os.path.join(cur_cwd, initrd)}")
-    #os.chdir(cur_cwd)
-    #os.system(f"cp -r {os.path.join(workdir, 'staging_bin')} {tmprd}")
-    #if not os.path.exists(os.path.join(tmprd, "bin/sh")):
-    #    os.system(f"mkdir -p {os.path.join(tmprd, 'bin')}")
-    #    os.system(f"ln -s /staging_bin/busybox {os.path.join(tmprd, 'bin/sh')}")
-    ##os.system(f"echo '#!/bin/sh' > {os.path.join(tmprd, 'init')}")
-    ##os.system(f"echo 'exec /bin/sh' >> {os.path.join(tmprd, 'init')}")
-    ##os.system(f"chmod 777 {os.path.join(tmprd, 'init')}")
-    ##os.system(f"ln -s '/staging_bin/busybox' {os.path.join(tmprd, 'init')}")
-    #os.system(f"cp {newinit} {os.path.join(tmprd, 'init')}")
-    #os.system(f"chmod 777 {os.path.join(tmprd, 'init')}")
-    #os.chdir(tmprd)
-    #os.system("find .|cpio -o -H newc > ../newrd.img")
     os.chdir(cur_cwd)
 
     return stat_res
-
-def replace_init(check_dir):
-    os.system(f"cp {os.path.join(CURDIR, 'systemd/forklift.service')} {os.path.join(check_dir, 'usr/lib/systemd/system')}")
-    os.system(f"cp {os.path.join(CURDIR, 'systemd/forklift.sh')} {check_dir}")
-    os.system(f"chmod 777 {os.path.join(check_dir, 'forklift.sh')}")
-    os.system(f"ln -s /usr/lib/systemd/system/forklift.service {os.path.join(check_dir, 'etc/systemd/system/multi-user.target.wants/forklift.service')}")
-
-def patch_gdb_builtin(patch_list, sym_tab):
-    # load sym_map
-    sym_map = dict()
-    for addr,_,sym in sym_tab:
-        sym_map[sym] = addr
-
-    # Patching
-    import subprocess
-    import signal
-
-    def dbgsendline(p, cmd):
-        p.stdin.write(cmd+b'\n')
-        p.stdin.flush()
-
-    def dbgread(p):
-        out = []
-        banner = dbg.stdout.read(6)
-        while banner != b'(gdb) ':
-            line = dbg.stdout.readline()
-            out.append(banner+line)
-            print(banner+line)
-            banner = dbg.stdout.read(6)
-        return out
-
-    ## builtin patch
-    #qemu = subprocess.Popen(['./runguest.sh'], stdout=subprocess.DEVNULL)
-    qemu_cmd = ['./qemu/build/qemu-system-x86_64',
-            '-m', '2048', '-kernel', './vmlinuz', '-initrd', './initrd.img',
-            '-append', '"console=ttyS0 nokaslr"',
-            '-display', 'none', '-serial', 'stdio', '-monitor', 'none',
-            '-s', '-S']
-    #qemu = subprocess.Popen(qemu_cmd)
-    dbg = subprocess.Popen(['gdb', '-q'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-    dbgsendline(dbg, b'target remote :1234')
-    dbgread(dbg)
-    dbgsendline(dbg, b'c')
-    time.sleep(2)   # NOTE: Timing is critical here. Some initcalls might be overwritten during bootstrap
-    dbgread(dbg)
-    dbg.send_signal(signal.SIGINT)
-    dbgread(dbg)
-
-    patch_set = dict()
-    diff = set(patch_list)
-    for sym in diff:
-        print(sym)
-        newsym = re.sub(r"__[0-9]+_[0-9]+_", '____', sym)
-        osym = newsym.split('____')[1]
-        if osym[-1].isnumeric():
-            osym = osym[:-1]
-        if osym[-2].isnumeric() and osym[-1] == 's':
-            osym = osym[:-2]
-        if osym.endswith("early"):
-            osym = osym[:-5]
-        if osym.endswith("rootfs"):
-            osym = osym[:-6]
-        print(hex(sym_map[osym]), osym)
-
-        # Dump & Generate Signature
-        dbgsendline(dbg, b'x/15xb ' + f'{hex(sym_map[osym])}'.encode('latin-1'))
-        output = dbgread(dbg)
-        addr = output[0].split()[0]
-        sig = output[0].strip().split()[1:] + output[1].strip().split()[1:]
-        print(addr, sig)
-        sig = sig[5:]   # Ignore 5 bytes FTrace Stub
-        print(sig)
-        offset = int(addr[:-1], 16) & 0xffff    # Use 16 bits offset
-        print(hex(offset))
-        patch_set[osym] = (offset, b''.join([chr(int(x,16)).encode('latin-1') for x in sig]))
-
-        dbgsendline(dbg, b'x/10i ' + f'{hex(sym_map[osym])}'.encode('latin-1'))
-        dbgread(dbg)
-
-    #qemu.terminate()
-    #qemu.wait()
-
-    # Match & Patch the Unpacked vmlinux kernel
-    with open('./vmlinux.unpack', 'rb') as fd:
-        data = fd.read()
-        for sym in patch_set:
-            off, sig = patch_set[sym]
-            print(sym, [hex(c) for c in sig], sig)
-            #print(len(re.findall(sig, data)))
-            search = data.find(sig)
-            print(hex(search), hex(off))
-            while search != -1:
-                if off+5 == (search&0xffff):
-                    print("patch: ", sym, f" ({hex(search)}), {hex(sym_map[sym])}, {hex(sym_map[sym]+5-search)}")
-                    print(hex(sym_map[sym] - sym_map['_text'] + 0x400000))
-                    data = data[:search] + b'\xc3' + data[search+1:]
-                search = data.find(sig, search+len(sig))
-
-        with open('new_vmlinux', 'wb') as outfd:
-            outfd.write(data)
-    #exit(0)
 
 def patch_module (check_dir, patch_list, mod_ver=None):
     # reorganize patch list
@@ -1006,8 +675,6 @@ def patch_module (check_dir, patch_list, mod_ver=None):
         if mod not in mod_patch:
             mod_patch[mod] = set()
         mod_patch[mod].add(sym)
-
-    prev_time = time.time()
 
     # Load target modules and start patching
     if not mod_ver:
@@ -1024,7 +691,7 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                 workdir = tempfile.mkdtemp(prefix="fdepmod_")
                 target_mod = os.path.join(workdir, m+".ko")
                 if ext == "ko":
-                    os.system(f"cp {os.path.join(root, mod)} {target_mod}")
+                    shutil.copy2(os.path.join(root, mod), target_mod)
                 else:
                     os.system(f"{unpack_helper[ext]} < {os.path.join(root, mod)} > {target_mod}")
 
@@ -1045,6 +712,7 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                 for patchsym in mod_patch[m]:
                     if patchsym not in off_map:
                         continue
+                    print(f"patched '{patchsym}@{m}.ko'")
                     patchoff = off_map[patchsym]
                     base_off = patchoff
                     patch_range = disasm.disasm(target_mod, patchoff, True)
@@ -1052,35 +720,35 @@ def patch_module (check_dir, patch_list, mod_ver=None):
                     for poff in patch_range:
                         plen = patch_range[poff]
                         if not ret_patched:
+                            # Skip endbr for ftrace
+                            if kodata[poff:poff+4] == list(b'\xf3\x0f\x1e\xfa') or kodata[poff:poff+4] == list(b'\xf3\x0f\x1e\xfb'):
+                                poff += 4
+                                plen -= 4
                             # Skip Ftrace Stub
-                            if kodata[poff:poff+5] == list(b'\xe8\x00\x00\x00\x00'):
+                            if kodata[poff] == 0xe8:
                                 poff += 5
                                 plen -= 5
                             if plen > 0:
                                 kodata[poff] = 0xc3
-                                for pi in range(1, plen, 1):
+                                for pi in range(1, plen):
                                     kodata[poff+pi] = 0x90
-                                #kodata = kodata[:poff] + b'\xc3' + b'\x90'*(plen-1) + kodata[poff+plen:]
                                 ret_patched = True
                             else:
                                 pass    # try next time
                         else:
                             for pi in range(plen):
                                 kodata[poff+pi] = 0x90
-                            #kodata = kodata[:poff] + b'\x90'*plen + kodata[poff+plen:]
                     assert (ret_patched)
                 # Write back
                 with open(target_mod, 'wb') as outfd:
                     outfd.write(bytes(kodata))
 
                 if ext == "ko":
-                    os.system(f"cp {target_mod} {os.path.join(root, mod)}")
+                    shutil.copy2(target_mod, os.path.join(root, mod))
                 else:
                     os.system(f"{pack_helper[ext]} < {target_mod} > {os.path.join(root, mod)}")
 
-                os.system(f"rm -rf {workdir}")
-
-    print("Patch modules: ", time.time()-prev_time)
+                shutil.rmtree(workdir)
 
 def remove_module(check_dir, rmmods, mod_ver=None):
     ## Remove Drivers in RootFS
@@ -1093,6 +761,9 @@ def remove_module(check_dir, rmmods, mod_ver=None):
             if m in rmmods or re.sub('-', '_', m) in rmmods:
                 drv_path = os.path.join(root, mod)
                 os.unlink(drv_path)
+                print(f"removed '{mod}'")
+
+    os.system(f"depmod -a -b {check_dir} {mod_ver}")
 
 def calc_module_size(check_dir, rmmods, mod_ver=None):
     ## Remove Drivers in RootFS
@@ -1125,33 +796,9 @@ def calc_module_count(check_dir, rmmods, mod_ver=None):
                 rm_cnt += 1
     return (rm_cnt, total_cnt)
 
-def remove_firmware(check_dir):
-    firmpath = os.path.join(check_dir, 'lib/firmware')
-    if os.path.exists(firmpath):
-        shutil.rmtree(firmpath)
-
 def replace_kernel(check_dir, newkern):
     kern = get_kernel(check_dir)
-    os.system(f"cp {newkern} {os.path.join(check_dir, 'boot', kern)}")
+    shutil.copy2(newkern, os.path.join(check_dir, 'boot', kern))
 
-## Obtain Hardware Ids
-# find /sys/devices/ -name modalias|xargs -I{} cat "{}"
 if __name__ == '__main__':
-    #hwconf = sys.argv[1]
-    #devdb_path = sys.argv[2]
-    #check_dir = sys.argv[3]
-
-    #linux_build="/home/hu/workspace/hu/linux/build_llvm"
-    #linux_src="/home/hu/workspace/hu/linux"
-
-    #builtin_objdeplist = "/home/hu/workspace/hu/uForkLift/coredev_v2/5.19.17/builtin-z3-allmodconfig.txt"
-    #_,_,_,patch_list,*_ = check_drivers(hwconf, devdb_path, check_dir)
-    #rmmod,symtab = get_target_info(check_dir)
-    #patch_builtin(patch_list, symtab)
-
-    with open('/home/hu/Hacksaw/openSUSE-Leap-15.4.x86_64-1.0.1-GCE-Build2.85.raw.dbg', 'r') as fd:
-        patchset = set(fd.read().strip().split('\n'))
-    modver = get_kernel_ver("/home/hu/Hacksaw/out/bigroot/0")
-    print(modver)
-    #print(patch_builtin("/home/hu/Hacksaw/out/repack/vmlinux.unpack", patchset, "/home/hu/Hacksaw/out/repack/linux-stable/build/System.map", filter_key=['console', 'lookup_one_len_unlocked', 'skb_unlink'], extra=[]))
-    print(patch_builtin("/home/hu/Hacksaw/out/repack/vmlinux.unpack", patchset, f"/home/hu/Hacksaw/out/bigroot/0/boot/System.map-{modver}", filter_key=[], extra=[]))
+    sys.exit(0)

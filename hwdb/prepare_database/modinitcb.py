@@ -11,9 +11,9 @@ curdir = os.path.dirname(os.path.realpath(__file__))
 # For new devices, update ~/modinitcb_macro.list and run ~/modinitcb.sh
 # grep -wrF "module_hid_driver" .|grep ":module_hid_driver(" >> ~/modinit.log
 patlist = os.path.join(curdir, "modinitcb_macro.list")
-greplog = os.path.join(curdir, "modinit.log")
-noentrylist = os.path.join(curdir, "noentry.list")
-log = os.path.join(curdir, "modinit.db")
+greplog = 'modinit.log'
+noentrylist = 'noentry.list'
+log = 'modinit.db'
 
 #output = subprocess.check_output(shlex.join([ \
 #        'grep', '-wrF', '"module_init"', \
@@ -64,12 +64,12 @@ def resolve_from_mk(f, linux_src, toplevel=True):
                     rules[-1] += line
                     combflag = False
             elif re.match(f'^{os.path.basename(f).split(".")[0]+".o"}\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-objs\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-y\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-m\s*[:+=]', line) \
-                    or re.match(f'^{os.path.basename(f).split(".")[0]}-\$\(', line) \
-                    or re.match(f'^\$\(obj\)/{os.path.basename(f).split(".")[0]}\.o\s*:', line) \
-                    or (toplevel and re.match(f'^obj-\$\(CONFIG_.*\)\s*\+=\s*{os.path.basename(f).split(".")[0]}', line)):
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-objs\s*[:+=]', line) \
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-y\s*[:+=]', line) \
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-m\s*[:+=]', line) \
+                or re.match(f'^{os.path.basename(f).split(".")[0]}-\$\(', line) \
+                or re.match(f'^\$\(obj\)/{os.path.basename(f).split(".")[0]}\.o\s*:', line) \
+                or (toplevel and re.match(f'^obj-\$\(CONFIG_.*\)\s*\+=\s*{os.path.basename(f).split(".")[0]}', line)):
                 #print("macro start", line)
                 if line.endswith('\\'):
                     rules.append(line[:-1])
@@ -108,7 +108,7 @@ def get_pats(patlist):
     with open(patlist, 'r') as fd:
         for line in fd.read().strip().split('\n'):
             modpats.append(
-                    re.compile(r"{}\s*\((.*)\)".format(line.strip())))
+                re.compile(r"{}\s*\((.*)\)".format(line.strip())))
     #initpat = re.compile(r"module_init\((.*)\)")
     #usbpat = re.compile(r"module_usb_driver\((.*)\)")
     #hidpat = re.compile(r"module_hid_driver\((.*)\)")
@@ -181,17 +181,15 @@ def get_initmap(greplog, linux_src, modpats):
     return modinit_map
 
 # find link info
-def get_bcmap(modinit_map, linux_src):
+def get_bcmap(modinit_map, linux_src, linux_build):
     bclist = set()
     foundfile = set()
     modcb = dict()
     noentry = set()
     nobc = set()
-    linux_build = os.path.join(linux_src, "build_llvm")
     for root,_,files in os.walk(linux_build):
         for f in files:
             if f.endswith('.mod'):
-                #continue
                 m = os.path.join(root, f[:-4]+".ko")
                 assert (os.path.exists(m))
                 output = subprocess.check_output([os.path.join(curdir, "..", "..", "utils", "get-mod-init.sh"), m])
@@ -241,23 +239,27 @@ def get_bcmap(modinit_map, linux_src):
                         data = fd.read()
                         tag = data.split(':=')[0].strip()[4:]
                         cmd = data.split(';')[1].strip()
-                        assert(cmd.startswith("echo"))
-                        objs = cmd.split('|')[0].strip().split()[1:]
+                        if cmd.startswith("echo"):
+                            objs = cmd.split('|')[0].strip().split()[1:]
+                        elif cmd.startswith("printf"):
+                            objs = cmd.split('|')[0].strip().split()[3:]
+                        else:
+                            continue
                         #cfiles = [os.path.join(os.path.relpath(root, linux_build), obj) for obj in objs]
                         for obj in objs:
                             if os.path.basename(obj).startswith("built-in"):
                                 btin = os.path.join(
-                                        os.path.dirname(f),
-                                        os.path.dirname(obj),
-                                        ".built-in.a.cmd")
+                                    os.path.dirname(f),
+                                    os.path.dirname(obj),
+                                    ".built-in.a.cmd")
                                 wq.append(btin)
                                 continue
                             assert (obj[-2] == ".")
                             key = os.path.normpath(
-                                    os.path.join(
-                                        os.path.relpath(root, linux_build),
-                                        os.path.dirname(f),
-                                        obj[:-2]+'.c'))
+                                os.path.join(
+                                    os.path.relpath(root, linux_build),
+                                    os.path.dirname(f),
+                                    obj[:-2]+'.c'))
                             print(os.path.join(linux_src, key))
                             # Skip assembly
                             if os.path.exists(os.path.join(linux_src, key[:-2]+'.S')):
@@ -286,10 +288,10 @@ def get_bcmap(modinit_map, linux_src):
                                 for cb, alias in modinit_map[key]:
                                     modcb[tag].add((cb, key, alias))
                                     print(os.path.join(linux_build, key))
-                                    if (not os.path.exists(os.path.join(linux_build, key[:-2]+'.o.bc'))):
+                                    if (not os.path.exists(os.path.join(linux_build, key[:-2]+'.bc'))):
                                         nobc.add(key)
                                     else:
-                                        bclist.add(os.path.join(linux_build, key[:-2]+'.o.bc'))
+                                        bclist.add(os.path.join(linux_build, key[:-2]+'.bc'))
                             #break
             else:
                 continue
@@ -299,8 +301,15 @@ def get_bcmap(modinit_map, linux_src):
 
 if __name__ == '__main__':
     linux_src = os.path.abspath(sys.argv[1])
+    linux_build = os.path.abspath(sys.argv[2])
+    outdir = os.path.abspath(sys.argv[3])
+
+    greplog = os.path.join(outdir, greplog)
+    noentrylist = os.path.join(outdir, noentrylist)
+    log = os.path.join(outdir, log)
+
     modinit_map = get_initmap(greplog, linux_src, get_pats(patlist))
-    modcb,_,foundfile,noentry,_ = get_bcmap(modinit_map, linux_src)
+    modcb,_,foundfile,noentry,_ = get_bcmap(modinit_map, linux_src, linux_build)
     with open(noentrylist, 'w') as fd:
         for tsk in noentry:
             assert (tsk.endswith(".mod"))

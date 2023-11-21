@@ -7,7 +7,6 @@ import os
 import sys
 import subprocess
 import threading
-import glob
 import re
 from collections import defaultdict
 from argparse import ArgumentParser, Namespace
@@ -43,8 +42,9 @@ def main(args: Namespace = parse_arguments()) -> int:
         if not load_configs(args):
             return 1
 
-        globs = glob.glob(kernel_path + "/**/built-in.a", recursive=True)
-        for builtin in globs:
+        p = subprocess.run(['find', kernel_path, '-name', 'built-in.a'], capture_output=True, text=True)
+        builtins = p.stdout.split()
+        for builtin in builtins:
             with open(builtin) as file:
                 for line in file:
                     l = line.rstrip()

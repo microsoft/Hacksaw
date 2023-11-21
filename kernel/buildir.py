@@ -5,7 +5,6 @@ import sys
 import time
 import shlex
 import subprocess
-#import multiprocessing
 
 
 linux_build = sys.argv[1]
@@ -23,7 +22,7 @@ for f in cmd_files:
     with open(f, 'r') as fd:
         data = fd.read()
         for line in data.split('\n'):
-            if line.startswith('cmd_'):
+            if line.startswith('cmd_') or line.startswith('savedcmd'):
                 cmd = line[line.find(' := ')+4:]
                 if ';' in cmd:
                     cmd = cmd[:cmd.find(';')]
@@ -34,9 +33,7 @@ for f in cmd_files:
 pool = [None] * nproc
 for f in build_cmd:
     cmd = shlex.split(build_cmd[f])
-    #if '-c' not in cmd:
-    #    continue
-    cmd += ['-emit-llvm', '-o', os.path.join(os.path.dirname(f[len(linux_build)+1:]), os.path.basename(f)[1:-4]+'.bc')]
+    cmd += ['-emit-llvm', '-o', os.path.dirname(f) + '/' + os.path.basename(f)[1:-3] + 'bc']
     print(cmd)
     if None in pool:
         pool[pool.index(None)] = subprocess.Popen(cmd, cwd=linux_build)

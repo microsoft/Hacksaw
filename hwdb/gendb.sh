@@ -1,16 +1,31 @@
 #!/bin/bash
 
-KERN_SRC=$(realpath "$1")
-curdir=$(dirname $(realpath $0))
-OUTPUT_DIR=$(dirname ${curdir})/out
-KERNELRELEASE=$(cat ${KERN_SRC}/build_llvm/include/config/kernel.release 2> /dev/null)
+if [ $# -eq 1 ]; then
+  KERNEL_VER="$1"
+else
+  KERNEL_VER="5.19.17"
+fi
 
-${curdir}/prepare_kernel/prepare_kernel.sh ${KERN_SRC}
-${curdir}/prepare_database/prepare_database.sh ${KERN_SRC}
+CURDIR=$(dirname $(realpath $0))
+ROOTDIR=$(dirname ${CURDIR})
+SRCDIR="${ROOTDIR}/kernel/src/"
+BUILDDIR="${ROOTDIR}/build/"
+OUTPUT_PATH="${ROOTDIR}/out/${KERNEL_VER}"
 
-${curdir}/platform/build/callgraph -f ${curdir}/prepare_database/allbc.list
-${curdir}/platform/build/platformdb \
-    -i ${curdir}/prepare_database/modinit.db \
-    -a ${KERN_SRC}/build_llvm/mod_install/lib/modules/${KERNELRELEASE}/modules.alias \
-    -l ${curdir}/prepare_database/allbc.list \
-    -o ${OUTPUT_DIR}/hw.db
+KERNEL_SRC_PATH="$SRCDIR/linux-$KERNEL_VER/"
+KERNEL_BUILD_PATH="$BUILDDIR/linux-$KERNEL_VER/"
+KERNELRELEASE=$(cat ${KERNEL_BUILD_PATH}/include/config/kernel.release 2> /dev/null)
+
+mkdir -p $OUTPUT_PATH
+
+${CURDIR}/prepare_database/prepare_database.sh ${KERNEL_SRC_PATH} ${KERNEL_BUILD_PATH} ${OUTPUT_PATH}
+
+${CURDIR}/build.sh
+
+${BUILDDIR}/platform/platformdb \
+    -i ${OUTPUT_PATH}/modinit.db \
+    -a ${KERNEL_BUILD_PATH}/mod_install/lib/modules/${KERNELRELEASE}/modules.alias \
+    -l ${OUTPUT_PATH}/allbc.list \
+    -o ${OUTPUT_PATH}/hw.db
+
+touch /tmp/hw.done

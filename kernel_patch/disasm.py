@@ -42,7 +42,7 @@ def disasm_test(fn, off):
     return patch_range
 
 def get_text_rel(fn):
-    out = subprocess.check_output(' '.join(['readelf', '-S', f'{fn}', '|', 'grep', '"\.text"']), shell=True)
+    out = subprocess.check_output(' '.join(['readelf', '-S', f'{fn}', '|', 'grep', '" \.text"']), shell=True)
     for line in out.decode('latin-1').split('\n'):
         line = line.strip()
         if '.text' in line.split():
@@ -66,10 +66,8 @@ def disasm(fn, off, raw_off=False, text_rel=None):
         data = fd.read()
     d = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     expected_dis = set()
-    #print("DEBUG disas ", hex(off), hex(text_va), hex(text_off), hex(len(data)))
     insnlist = list(d.disasm(data[off:off+16], text_va))
-    # Disasm 3 instructions, skip __fentry__
-    maxinsn = 3
+    maxinsn = 2
     insncnt = 0
     while insnlist:
         if insncnt > maxinsn:
