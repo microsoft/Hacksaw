@@ -10,8 +10,8 @@ RUN apt update \
   && apt install -y \
     libguestfs-tools
 
-RUN groupadd -g ${USER_ID} hacksaw
-RUN useradd -u ${USER_ID} -g ${USER_ID} -m hacksaw
+RUN groupadd -g ${GROUP_ID} hacksaw
+RUN useradd -u ${USER_ID} -g ${GROUP_ID} -m hacksaw
 
 RUN mkdir -p /hacksaw
 WORKDIR /hacksaw

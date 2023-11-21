@@ -44,8 +44,8 @@ RUN update-alternatives \
   --slave /usr/bin/llvm-ar llvm-ar /usr/bin/llvm-ar-15 \
   --slave /usr/bin/opt opt /usr/bin/opt-15
 
-RUN groupadd -g ${USER_ID} hacksaw
-RUN useradd -u ${USER_ID} -g ${USER_ID} -m hacksaw
+RUN groupadd -g ${GROUP_ID} hacksaw
+RUN useradd -u ${USER_ID} -g ${GROUP_ID} -m hacksaw
 
 RUN mkdir -p /hacksaw
 WORKDIR /hacksaw
