@@ -85,7 +85,7 @@ def get_target_info(check_dir, sysmap=None):
         for fn in files:
             m = builddep.norm_mod(fn)
             if m.endswith(".ko"):
-                m = m[:-3]
+                m = re.sub('-', '_', m[:-3])
                 mod_list.add((m, os.path.join(root[len(mod_dir):], fn)))
 
     symtab = []
@@ -279,6 +279,9 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
     # non-function symbols
     nonfunc_syms = set([t[2] for t in symtab if t[1] not in set(['t', 'T', 'w', 'W'])])
 
+    # non-function symbols
+    nonfunc_syms = set([t[2] for t in symtab if t[1] not in ['t', 'T']])
+
     # All Mods on disk img
     alldiskmods = set([t[0] for t in allmod])
     diskmodmaps = dict()
@@ -413,6 +416,7 @@ def check_drivers(hwconf, devdb_path, check_dir, busreg_apis, btobj_deps, linux_
         print(dep_remove)
 
     cur_removed_mods = set([os.path.basename(x).split('.')[0] for x in dep_remove]) | new_new_mod_remove
+    # cur_removed_mods = set([re.sub('-', '_', os.path.basename(x).split('.')[0]) for x in dep_remove]) | new_new_mod_remove
 
     # Function Dependency -- Built-in && Register APIs
     rmfunc_fdep = set()
