@@ -28,4 +28,4 @@ ROOTDIR=$(dirname $(realpath $0))/hacksaw
 
 ${ROOTDIR}/kernel_patch/get-target-objdep.sh $kerver ${ROOTDIR}/${confpath}
 
-echo 'Dependency analyze is done.'
+echo 'Dependency analysis is done.'
