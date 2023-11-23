@@ -71,7 +71,7 @@ def get_initrd(check_dir):
     initrd = os.path.join(check_dir, "boot", f"initrd-{mod_ver}")
     if os.path.exists(initrd):
         return initrd
-    
+
     return None
 
 def get_target_info(check_dir, sysmap=None):
@@ -225,7 +225,7 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                     continue
                 patch_sym_ex.add((o,f))
                 continue
-    
+
             for relf, relmod in fdeps:
                 if not odeps.is_ir_mod(relmod):
                     continue
@@ -234,13 +234,13 @@ def check_fdep(fdep_checklist, patch_sym, odeps, \
                         continue
                     patch_sym_ex.add((relmod,relf))
                     continue
-    
+
                 patchable = True
                 for caller, cmod in fdeps[(relf,relmod)]:
                     if not odeps.is_ir_mod(cmod) or (cmod,caller) not in patch_sym_ex:
                         patchable = False
                         break
-    
+
                 if patchable:
                     if odeps.has_referencer(relmod, relf, patch_sym_ex):
                         continue
