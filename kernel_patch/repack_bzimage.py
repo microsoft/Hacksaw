@@ -5,44 +5,6 @@ import sys
 import shutil
 import subprocess
 import tempfile
-from argparse import ArgumentParser, Namespace
-from typing import Dict, List
-
-image_path = ''
-kernel_path = ''
-inplace=False
-
-def parse_arguments(cli_args: List[str] = None) -> Namespace:
-    parser = ArgumentParser(description='Repack a bzImage (vmlinuz) file with a kernel raw image')
-    parser.add_argument('-i', '--image', action='store', required=True,
-                        help='bzImage file path')
-    parser.add_argument('-k', '--kernel', action='store', required=True,
-                        help='kernel raw image file path')
-    parser.add_argument('-p', '--inplace', action='store_true',
-                        help='in-place patching')
-    parser.set_defaults(inplace=False)
-    return parser.parse_args(args=cli_args)
-
-def load_configs(args: Namespace) -> Dict:
-    try:
-        global image_path 
-        image_path = os.path.realpath(args.image)
-        if not os.path.exists(image_path):
-            print(image_path, "does not exist", file=sys.stderr)
-            return False
-
-        global kernel_path 
-        kernel_path = os.path.realpath(args.kernel)
-        if not os.path.exists(kernel_path):
-            print(kernel_path, "does not exist", file=sys.stderr)
-            return False
-
-    except Exception as err:
-        print(err)
-        if err == "Really Bad":
-            raise err
-
-    return True
 
 unpack_helper = {
         "zst" : "zstdcat",
@@ -116,7 +78,7 @@ def compress_kernel(kernel, alg):
 
     return outpath
 
-def patch_bzimage(image_path, comp_kern, start, end, inplace=False):
+def overwrite_bzimage(image_path, comp_kern, start, end, inplace=False):
     patched_img=image_path + ".patched"
     shutil.copy2(image_path, patched_img)
 
@@ -127,46 +89,38 @@ def patch_bzimage(image_path, comp_kern, start, end, inplace=False):
         shutil.copy2(patched_img, image_path)
         os.unlink(patched_img)
 
-def main(args: Namespace = parse_arguments()) -> int:
-    try:
-        if not load_configs(args):
-            return 1
+def repack_bzimage(bzimage, kernel, inplace=False):
+    if not os.path.exists(bzimage):
+        print(bzimage, "does not exist", file=sys.stderr)
+        return False
 
-        alg,idx = identify_compression_algorithm(image_path)
-        if alg is None:
-            print("Failed to identify a compression algorithm.")
-            return 1
+    if not os.path.exists(kernel):
+        print(kernel, "does not exist", file=sys.stderr)
+        return False
 
-        piggy_idx = find_piggyback(image_path)
-        if piggy_idx is None:
-            print("Failed to identify piggyback data.")
-            return 1
+    alg,idx = identify_compression_algorithm(bzimage)
+    if alg is None:
+        print("Failed to identify a compression algorithm.")
+        return False
 
-        print(f"Compression algorithm : {alg} (start: {idx}, end: {piggy_idx})")
+    piggy_idx = find_piggyback(bzimage)
+    if piggy_idx is None:
+        print("Failed to identify piggyback data.")
+        return False
 
-        comp_kern = compress_kernel(kernel_path, alg)
-        comp_size = os.path.getsize(comp_kern)
+    print(f"Compression algorithm : {alg} (start: {idx}, end: {piggy_idx})")
 
-        if comp_size > piggy_idx-idx:
-            print("Repack is not possible. Compressed patched kernel ({0}) is larger than the original kernel ({1})".format(comp_size, piggy_idx - idx))
-            return 1
+    comp_kern = compress_kernel(kernel, alg)
+    comp_size = os.path.getsize(comp_kern)
 
-        if args.inplace:
-            patch_bzimage(image_path, comp_kern, idx, piggy_idx, True)
-        else:
-            patch_bzimage(image_path, comp_kern, idx, piggy_idx)
+    if comp_size > piggy_idx-idx:
+        print("Repack is not possible. Compressed patched kernel ({0}) is larger than the original kernel ({1})".format(comp_size, piggy_idx - idx))
+        return False
 
-        os.unlink(comp_kern)
+    if inplace:
+        overwrite_bzimage(bzimage, comp_kern, idx, piggy_idx, True)
+    else:
+        overwrite_bzimage(bzimage, comp_kern, idx, piggy_idx)
 
-    except KeyboardInterrupt:
-        print("Keyboard interrupt", file=sys.stderr)
-        return 1
-
-    except Exception as err:
-        print("Exception:", err, file=sys.stderr)
-        return 1
-
-    return 0
-
-if __name__ == '__main__':
-    sys.exit(main(parse_arguments()))
+    os.unlink(comp_kern)
+    return True

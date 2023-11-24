@@ -44,13 +44,13 @@ guestmount -a $IMAGE -i --rw $MNTPOINT
 rm -rf $MNTPOINT/boot/vmlinuz*
 rm -rf $MNTPOINT/boot/initr*
 rm -rf $MNTPOINT/lib/modules/*
-pushd $IMAGEIN/boot
-cp vmlinuz* $MNTPOINT/boot/
-cp initr* $MNTPOINT/boot/
-popd
-pushd $IMAGEIN/lib/modules/
+pushd $IMAGEIN/boot > /dev/null
+cp -a vmlinuz* $MNTPOINT/boot/
+cp -a initr* $MNTPOINT/boot/
+popd > /dev/null
+pushd $IMAGEIN/lib/modules/ > /dev/null
 cp -a * $MNTPOINT/lib/modules/
-popd
+popd > /dev/null
 chmod 755 $MNTPOINT/boot/vmlinuz*
 chmod 755 $MNTPOINT/boot/initr*
 chmod -R 755 $MNTPOINT/lib/modules/*

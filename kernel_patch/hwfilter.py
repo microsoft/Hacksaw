@@ -19,6 +19,7 @@ CURDIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(CURDIR, "..", "dependency"))
 import builddep
 import gen_objdep
+import repack_bzimage
 
 def load_alldrv(linux_build):
     alldrv_list = set()
@@ -798,7 +799,10 @@ def calc_module_count(check_dir, rmmods, mod_ver=None):
 
 def replace_kernel(check_dir, newkern):
     kern = get_kernel(check_dir)
-    shutil.copy2(newkern, os.path.join(check_dir, 'boot', kern))
+    kern = os.path.join(check_dir, 'boot', kern)
+    # shutil.copy2(newkern, kern)
+    repack_bzimage.repack_bzimage(kern, newkern, True)
+
 
 if __name__ == '__main__':
     sys.exit(0)
