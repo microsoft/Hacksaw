@@ -20,7 +20,7 @@ comp_signature = {
         "zst" : list(b'\x28\xb5\x2f\xfd'),
         "gz"  : list(b'\x1f\x8b\x08'),
         "bz2" : list(b'\x42\x5a\x68'),
-        "xz"  : list(b'\xfd\x37\x7a\x58\x5a'),
+        "xz"  : list(b'\xfd\x37\x7a\x58\x5a\x00'),
         "lzma": list(b'\x5d\x00\x00\x00'),
         "lz4" : list(b'\x02\x21\x4c\x18'),
         "lzo" : list(b'\x89\x4c\x5a'),
