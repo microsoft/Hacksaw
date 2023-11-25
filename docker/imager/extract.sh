@@ -26,7 +26,7 @@ fi
 
 ROOTDIR=$(dirname $(realpath $0))/hacksaw
 IMAGE=${ROOTDIR}/${sysimg}
-IMAGEOUT="${outpath}/out.$(basename ${sysimg})"
+IMAGEOUT="${outpath}/$(basename ${sysimg}).extracted"
 MNTPOINT="/tmp/mnt/"
 
 if [ ! -e "$IMAGE" ]; then

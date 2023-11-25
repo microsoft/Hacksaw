@@ -800,9 +800,8 @@ def calc_module_count(check_dir, rmmods, mod_ver=None):
 def replace_kernel(check_dir, newkern):
     kern = get_kernel(check_dir)
     kern = os.path.join(check_dir, 'boot', kern)
-    # shutil.copy2(newkern, kern)
-    repack_bzimage.repack_bzimage(kern, newkern, True)
-
+    if not repack_bzimage.repack_bzimage(kern, newkern, True):
+        shutil.copy2(newkern, kern+'.patched')
 
 if __name__ == '__main__':
     sys.exit(0)

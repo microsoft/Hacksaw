@@ -71,7 +71,7 @@ if [ ! -z "${build}" ]; then
 fi
 
 BUILDDIR="${ROOTDIR}/build/"
-IMAGE_BASE_PATH="out/out.${SYSIMG}"
+IMAGE_BASE_PATH="out/${SYSIMG}.extracted"
 
 # extract kernel, modules, initramfs, and config from a target system image
 if [ ! -d ${ROOTDIR}/${IMAGE_BASE_PATH} ]; then
