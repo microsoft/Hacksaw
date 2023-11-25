@@ -81,7 +81,7 @@ def compress_kernel(kernel, alg):
 
     return outpath
 
-def overwrite_comp_kernel(bzimage_path, comp_kern_path, start, end, inplace=False):
+def replace_comp_kernel(bzimage_path, comp_kern_path, start, end, inplace=False):
     patched_img=bzimage_path + ".patched"
     shutil.copy2(bzimage_path, patched_img)
 
@@ -121,9 +121,9 @@ def repack_bzimage(bzimage, kernel, inplace=False):
         return False
 
     if inplace:
-        overwrite_comp_kernel(bzimage, comp_kern, idx, piggy_idx, True)
+        replace_comp_kernel(bzimage, comp_kern, idx, piggy_idx, True)
     else:
-        overwrite_comp_kernel(bzimage, comp_kern, idx, piggy_idx)
+        replace_comp_kernel(bzimage, comp_kern, idx, piggy_idx)
 
     os.unlink(comp_kern)
     return True
