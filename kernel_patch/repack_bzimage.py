@@ -23,7 +23,7 @@ comp_signature = {
         "xz"  : list(b'\xfd\x37\x7a\x58\x5a'),
         "lzma": list(b'\x5d\x00\x00\x00'),
         "lz4" : list(b'\x02\x21\x4c\x18'),
-        "lzo" : list(b'\x89\x42\x5a'),
+        "lzo" : list(b'\x89\x4c\x5a'),
         }
 
 def identify_compression_algorithm(bzimage):
@@ -32,16 +32,16 @@ def identify_compression_algorithm(bzimage):
     with open(bzimage, 'rb') as f:
         data = list(f.read())
         for alg in comp_signature:
-            skip = len(comp_signature[alg])
+            siglen = len(comp_signature[alg])
 
             i = 0
             while i < len(data):
-                if data[i:i+skip] == comp_signature[alg]:
+                if data[i:i+siglen] == comp_signature[alg]:
                     subprocess.run(f"tail -c+{i+1} {bzimage} | {unpack_helper[alg]} > {outpath} 2>/dev/null", shell=True, check=False)
                     if os.path.getsize(outpath):
                         os.unlink(outpath)
                         return (alg,i)
-                i = i + skip
+                i = i+1
 
     os.unlink(outpath)
     return (None,None)
