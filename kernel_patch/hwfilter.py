@@ -493,7 +493,7 @@ def patch_kernel(img_mounted, patch_list, sysmap, filter_key=None, extra=[], ini
     extract_vmlinux='./extract-vmlinux'
     if not os.path.exists(extract_vmlinux):
         os.system(f"wget https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-vmlinux -O {extract_vmlinux}")
-        os.system(f"chmod a+x {extract_vmlinux}")
+        os.chmod(extract_vmlinux, 0o777)
 
     # find and decompress vmlinuz
     mod_ver = get_kernel_ver(img_mounted)
@@ -799,9 +799,14 @@ def calc_module_count(check_dir, rmmods, mod_ver=None):
 
 def replace_kernel(check_dir, newkern):
     kern = get_kernel(check_dir)
-    kern = os.path.join(check_dir, 'boot', kern)
-    if not repack_bzimage.repack_bzimage(kern, newkern, True):
-        shutil.copy2(newkern, kern+'.patched')
+    kernpath = os.path.join(check_dir, "boot", kern)
+    kerndir = os.path.dirname(kernpath)
+    os.chmod(kerndir, 0o777)
+    if not repack_bzimage.repack_bzimage(kernpath, newkern, True):
+        patched_kerndir = os.path.join(kerndir, "patched")
+        if not os.path.exists(patched_kerndir):
+            os.mkdir(patched_kerndir)
+        shutil.copy2(newkern, os.path.join(patched_kerndir, kern))
 
 if __name__ == '__main__':
     sys.exit(0)
