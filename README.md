@@ -1,12 +1,26 @@
 # Hacksaw
 
-> These repository is in WiP.
-> The CCS 2023 artifact evaluators are expected to
-> visit https://github.com/microsoft/hacksaw/tree/ccs23ae.
+Hacksaw is a prototype toolkit to debloat Linux kernel based on hardware device inventory and dependency analysis. In particular, it customizes a given system disk image for a target hardware platform such as a specific cloud environment (e.g., an Azure VM) or a bare-metal machine. It was presented at [ACM CCS 2023](https://www.microsoft.com/en-us/research/publication/hacksaw-hardware-centric-kernel-debloating-via-device-inventory-and-dependency-analysis/).
 
-This repository contains an early-stage prototype for Hacksaw,
-which will be presented at
-[ACM Conference on Computer and Communications Security (CCS)](https://www.sigsac.org/ccs/CCS2023/).
+## Usage
+
+Hacksaw consists of numerous scripts and binaries managing its three procedures: hardware database preparation, dependency analysis, and system image patching. We prepare Docker/Container environments to properly use them and a test script to run them in a proper order. For example, you can debloat a Ubuntu cloud image for a default QEMU-KVM environment like below:
+
+```sh
+$ pushd test
+$ wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+$ ./run.sh -b 1 -p hwprof/qemu-kvm.txt -i jammy-server-cloudimg-amd64.img
+$ popd
+```
+
+The initial execution of `run.sh` could take several hours depending on your hardware and consume a lot of storage because it will compile Linux kernel 2-3 times. However, the hardware database and dependency analysis results could be reused later depending on (major) kernel versions, build configurations, and device inventory.
+
+> Further instruction will be added later.
+
+## CCS 2023 Artifact Evaluation
+
+A version of Hacksaw for the CCS 2023 artifact evaluation can be found at
+https://github.com/microsoft/hacksaw/tree/ccs23ae.
 
 ## Contributing
 
