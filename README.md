@@ -1,10 +1,10 @@
 # Hacksaw
 
-Hacksaw is a prototype toolkit to debloat Linux kernel based on hardware device inventory and dependency analysis. In particular, it customizes a given system disk image for a target hardware platform such as a specific cloud environment (e.g., an Azure VM) or a bare-metal machine. It was presented at [ACM CCS 2023](https://www.microsoft.com/en-us/research/publication/hacksaw-hardware-centric-kernel-debloating-via-device-inventory-and-dependency-analysis/).
+Hacksaw is a prototype toolkit to debloat Linux kernel based on hardware device inventory and dependency analysis. In particular, it customizes a given system disk image for a target hardware platform such as a cloud environment (e.g., an Azure VM) or a bare-metal machine. It was presented at [ACM CCS 2023](https://www.microsoft.com/en-us/research/publication/hacksaw-hardware-centric-kernel-debloating-via-device-inventory-and-dependency-analysis/).
 
 ## Usage
 
-Hacksaw consists of numerous scripts and binaries managing its three procedures: hardware database preparation, dependency analysis, and system image patching. We prepare Docker/Container environments to properly use them and a test script to run them in a proper order. For example, you can debloat a Ubuntu cloud image for a default QEMU-KVM environment like below:
+Hacksaw consists of numerous scripts and binaries managing its three main procedures: hardware database building, dependency analysis, and system image patching. We prepare Docker/Container environments to properly use them and a test script to run them in a proper order. For example, you can debloat a Ubuntu cloud image for a default QEMU-KVM environment like below:
 
 ```sh
 $ pushd test
@@ -13,7 +13,7 @@ $ ./run.sh -b 1 -p hwprof/qemu-kvm.txt -i jammy-server-cloudimg-amd64.img
 $ popd
 ```
 
-The initial execution of `run.sh` could take several hours depending on your hardware and consume a lot of storage because it will compile Linux kernel 2-3 times. However, the hardware database and dependency analysis results could be reused later depending on (major) kernel versions, build configurations, and device inventory.
+The initial execution of `run.sh` could take several hours depending on your hardware and consume a lot of storage because it will compile Linux kernel 2-3 times. However, the hardware database and dependency analysis results can be reused later depending on (major) kernel versions, build configurations, and device inventory.
 
 > Further instruction will be added later.
 
