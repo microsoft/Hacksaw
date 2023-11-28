@@ -8,12 +8,12 @@ Hacksaw consists of numerous scripts and binaries managing its three main proced
 
 ```sh
 $ pushd test
-$ wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
-$ ./run.sh -b 1 -p hwprof/qemu-kvm.txt -i jammy-server-cloudimg-amd64.img
+$ wget https://cloud-images.ubuntu.com/mantic/current/mantic-server-cloudimg-amd64.img
+$ ./run.sh -b 1 -p hwprof/qemu-kvm.txt -i mantic-server-cloudimg-amd64.img
 $ popd
 ```
 
-The initial execution of `run.sh` could take several hours depending on your hardware and consume a lot of storage because it will compile Linux kernel 2-3 times. However, the hardware database and dependency analysis results can be reused later depending on (major) kernel versions, build configurations, and device inventory.
+The initial execution of `run.sh` could take several hours depending on your machine specification and require a lot of storage because it will compile Linux kernel 2-3 times. However, the hardware database and dependency analysis results can be reused later depending on (major) kernel version, kernel build configuration, and device inventory.
 
 > Further instruction will be added later.
 
